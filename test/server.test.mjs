@@ -99,3 +99,25 @@ test('reporting endpoint uses an existing case, rejects arbitrary targets, and n
     assert.equal((await fetch(`${base}/api/reporting?caseId=${liveFeed.cases[0].id}&url=https://untrusted.example`)).status, 400);
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
+
+test('hosted backend mode requires the Worker token except on /health, and rejects browser origins', async () => {
+  const { backendAuthorized } = await import('../apps/agent/fixture-server.mjs');
+  const backendToken = 'b'.repeat(40);
+  assert.equal(backendAuthorized(`Bearer ${backendToken}`, backendToken), true);
+  assert.equal(backendAuthorized(`Bearer ${'c'.repeat(40)}`, backendToken), false);
+  assert.equal(backendAuthorized('', backendToken), false);
+  const server = await createFixtureServer({ backendToken });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}`;
+  // A public Host header (as on Cloud Run) is accepted in backend mode.
+  const call = (path, headers = {}) => new Promise((resolve, reject) => {
+    get(`${base}${path}`, { headers: { Host: 'ghost-links-abc-uc.a.run.app', ...headers } }, response => { response.resume(); resolve(response.statusCode); }).on('error', reject);
+  });
+  try {
+    assert.equal(await call('/health'), 200);
+    assert.equal(await call('/api/no-such-route'), 401);
+    assert.equal(await call('/api/no-such-route', { Authorization: `Bearer ${'c'.repeat(40)}` }), 401);
+    assert.equal(await call('/api/no-such-route', { Authorization: `Bearer ${backendToken}` }), 404);
+    assert.equal(await call('/api/no-such-route', { Authorization: `Bearer ${backendToken}`, Origin: 'https://evil.example' }), 403);
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});
