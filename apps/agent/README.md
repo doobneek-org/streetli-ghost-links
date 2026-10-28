@@ -123,3 +123,21 @@ runtimes; Python compilation and URL admission tests run without paid calls.
 All API keys live server-side in a local `.env`; commit names and instructions only in `.env.example`. A future Streetli token may access only an approved read projection. Never request or use Firebase/admin credentials, raw logs, private notes, email histories, private source modules, or unreviewed production exports. Do not log authorization headers or pass secrets to prompts.
 
 Keep fixture mode usable without credentials or network calls. The fixtures are synthetic and CC0; they must never be reported to real platforms as actual errors.
+
+## One actions (Discord, Gmail, Google Sheets)
+
+Every One action runs only when a reviewer or user clicks it; message text is built
+on the server from case and result data. `apps/agent/one-actions.mjs` calls One's
+passthrough API (`x-one-secret`, `x-one-connection-key`, `x-one-action-id`).
+
+| Button | One app | Endpoint |
+| --- | --- | --- |
+| Send to the team | Discord message to `DISCORD_CHANNEL_ID` | `POST /api/one/team-ticket` |
+| Email me this list | Gmail send to the address the user types | `POST /api/one/email-list` |
+| Log event + action list | Google Sheets append to tabs `Events` and `Actions` of `GHOST_LINKS_SHEET_ID` | `POST /api/one/log-event` |
+| Email progress report | Gmail send of the ghost report | `POST /api/one/ghost-report` |
+
+Setup: create a One account and key (`ONE_SECRET` in `.env`), connect the apps
+(`npx @withone/cli add discord`, `... add gmail`, `... add google-sheets`), then run
+`npm run one:setup`. It resolves connection keys and action ids with the One CLI
+(list → find) into ignored `data/one-actions.json`; nothing is sent during setup.

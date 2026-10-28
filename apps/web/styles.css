@@ -139,3 +139,7 @@ main{max-width:1320px;margin:auto;padding:0 46px}.hero{padding:64px 0 52px;max-w
 @media (max-width:520px){.leaderboard-row{grid-template-columns:30px 1fr auto}.leader-title{grid-column:2}.leader-stats{grid-column:2/3}.leader-points{grid-column:3}}
 .service-distance{margin-left:auto;font-size:11px;font-weight:650;color:var(--green);white-space:nowrap}
 .service-type{font-size:10px;color:var(--secondary);margin:0;text-transform:capitalize}
+.one-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
+.one-form input{flex:1;min-width:180px;max-width:320px}
+.one-actions{border-top:1px dashed var(--line);padding-top:12px;display:grid;gap:8px}
+.one-button{justify-self:start}

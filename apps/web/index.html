@@ -39,6 +39,12 @@
       <section id="leaderboard" class="leaderboard" aria-labelledby="leaderboard-title" hidden></section>
       <div id="category-board" class="category-board" role="group" aria-label="Failed verifications by category"></div>
       <div id="discovery-output" class="research-output discovery-output"></div>
+      <form id="report-form" class="one-form">
+        <label class="sr-only" for="report-email">Email for the ghost report</label>
+        <input id="report-email" type="email" autocomplete="email" maxlength="254" placeholder="team@example.org" data-spooky-placeholder="crypt-keeper@example.org">
+        <button id="report-submit" class="secondary-button" type="submit" data-spooky="📜 Email the ghost report">📧 Email progress report</button>
+        <span id="report-status" class="research-note" role="status" aria-live="polite"></span>
+      </form>
       <div class="history-filters" role="group" aria-label="Filter historical record state"><button type="button" data-history-state="all" aria-pressed="true">All history <span data-state-count="all">—</span></button><button type="button" data-history-state="removed" aria-pressed="false">Removed <span data-state-count="removed">—</span></button><button type="button" data-history-state="flagged" aria-pressed="false">Flagged <span data-state-count="flagged">—</span></button></div>
       <div class="queue-toolbar"><div class="type-filters" role="group" aria-label="Filter identifier type"><button type="button" data-kind="all" aria-pressed="true">All records <span data-count="all">—</span></button><button type="button" data-kind="website" aria-pressed="false">Websites <span data-count="website">—</span></button><button type="button" data-kind="phone" aria-pressed="false">Phone numbers <span data-count="phone">—</span></button><button type="button" data-kind="email" aria-pressed="false">Emails <span data-count="email">—</span></button></div><p id="result-count" class="result-count" aria-live="polite">Waiting for records</p></div>
       <div class="queue-layout">

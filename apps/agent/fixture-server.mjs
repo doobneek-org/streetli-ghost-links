@@ -7,6 +7,7 @@ import { PUBLIC_CASES_URL } from '../../packages/contracts/case-source.mjs';
 import { createResearchRunner, manualTestCase } from './research-route.mjs';
 import { createReviewStore, leaderboard, parseDecision } from './review-actions.mjs';
 import { createDiscoveryRunner, runPython } from './discovery-runner.mjs';
+import { eventRows, ghostReportEmail, gmailRaw, loadOneConfig, oneStatus, runOneAction, serviceListEmail, teamTicketText, validEmail } from './one-actions.mjs';
 
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 const contentTypes = { '/': 'text/html; charset=utf-8', '/app.js': 'text/javascript; charset=utf-8', '/styles.css': 'text/css; charset=utf-8' };
@@ -100,7 +101,12 @@ async function readJsonBody(request, limit = 4096) {
   try { return JSON.parse(body); } catch { throw safeError('invalid_request', 400); }
 }
 
-export async function createFixtureServer({ sourceUrl = '', token = '', fetchImpl = fetch, source = null, research = createResearchRunner(), reviews = createReviewStore(), discovery = createDiscoveryRunner(), python = runPython } = {}) {
+export async function createFixtureServer({ sourceUrl = '', token = '', fetchImpl = fetch, source = null, research = createResearchRunner(), reviews = createReviewStore(), discovery = createDiscoveryRunner(), python = runPython, one = {} } = {}) {
+  const oneConfig = one.loadConfig || loadOneConfig;
+  const oneFetch = one.fetchImpl || fetch;
+  const oneEnv = one.env || process.env;
+  let lastServiceResult = null;
+  let lastOneAction = 0;
   const fixture = validateCaseFeed(JSON.parse(await readFile(new URL('../../fixtures/cases.demo.json', import.meta.url), 'utf8')));
   const mode = source || sourceUrl ? 'live' : 'fixture';
   const getCases = source || (sourceUrl ? createLiveSource({ sourceUrl, token, fetchImpl }) : async () => fixture);
@@ -219,13 +225,70 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
             const cases = lastFeed.mode === 'live' ? lastFeed.cases.slice(0, 2000).map(item => ({ id: item.id, name: item.organization.name, locality: item.organization.locality })) : [];
             const result = await python({ eventText: text, cases, findOnly: route === 'find_services' }, { onEvent });
             const { annotateRisk } = await import('./ask.mjs');
-            write(result.kind ? { type: 'result', route, ...result, services: annotateRisk(result.services, lastFeed) } : { type: 'error', message: 'The service search failed. Check the server console and provider keys.' });
+            if (result.kind) lastServiceResult = { ...result, services: annotateRisk(result.services, lastFeed) };
+            write(result.kind ? { type: 'result', route, ...lastServiceResult } : { type: 'error', message: 'The service search failed. Check the server console and provider keys.' });
           } else {
             write({ type: 'result', kind: 'unsupported', route, reason: routed.output?.reason || '' });
           }
         } catch { write({ type: 'error', message: 'The request failed. Check the server console and provider keys.' }); }
         finally { routing = false; }
         return response.end();
+      }
+      // ---- One actions: each runs only on an explicit click; content is built here ----
+      if (path === '/api/one/status' && request.method === 'GET') return send(200, oneStatus(await oneConfig(), oneEnv));
+      if (path.startsWith('/api/one/') && request.method === 'POST') {
+        const body = await readJsonBody(request);
+        if (Date.now() - lastOneAction < 3000) return send(429, { error: 'one_throttled' });
+        const config = await oneConfig();
+        const status = oneStatus(config, oneEnv);
+        const run = (name, options) => runOneAction(config, name, options, { env: oneEnv, fetchImpl: oneFetch });
+        const by = typeof body?.by === 'string' && /^[\p{L}\p{N} ._'-]{1,40}$/u.test(body.by) ? body.by : '';
+        try {
+          if (path === '/api/one/team-ticket') {
+            if (!status.discord) return send(503, { error: 'one_discord_not_configured' });
+            const caseId = typeof body?.caseId === 'string' ? body.caseId : '';
+            lastFeed = lastFeed || validateCaseFeed(await getCases());
+            const item = lastFeed.cases.find(candidate => candidate.id === caseId);
+            if (!item) return send(404, { error: 'case_not_found' });
+            const finding = lastFeed.mode === 'live' ? (await discovery.findings(lastFeed))[caseId] : null;
+            const note = typeof body?.note === 'string' ? body.note.slice(0, 300) : '';
+            lastOneAction = Date.now();
+            const channel = oneEnv.DISCORD_CHANNEL_ID;
+            await run('discordMessage', { pathVariables: { channelId: channel, channel_id: channel, id: channel }, body: { content: teamTicketText({ item, finding, note, by }) } });
+            return send(200, { ok: true, sent: 'discord', channel });
+          }
+          if (path === '/api/one/email-list' || path === '/api/one/ghost-report') {
+            if (!status.gmail) return send(503, { error: 'one_gmail_not_configured' });
+            if (!validEmail(body?.to)) return send(400, { error: 'invalid_email' });
+            let message;
+            if (path === '/api/one/email-list') {
+              if (!lastServiceResult?.services?.length) return send(409, { error: 'no_service_results' });
+              message = serviceListEmail({ services: lastServiceResult.services, area: lastServiceResult.searchedArea || lastServiceResult.event?.area, event: lastServiceResult.kind === 'event' ? lastServiceResult.event?.event_type : '' });
+            } else {
+              lastFeed = lastFeed || validateCaseFeed(await getCases());
+              const decisions = await reviews.list(lastFeed.mode);
+              const findings = lastFeed.mode === 'live' ? await discovery.findings(lastFeed) : {};
+              message = ghostReportEmail({ leaderboard: leaderboard(decisions), decisions, findings, mode: lastFeed.mode });
+            }
+            lastOneAction = Date.now();
+            await run('gmailSend', { pathVariables: { userId: 'me', user_id: 'me' }, body: { raw: gmailRaw({ to: body.to, ...message }) } });
+            return send(200, { ok: true, sent: 'gmail', subject: message.subject });
+          }
+          if (path === '/api/one/log-event') {
+            if (!status.sheets) return send(503, { error: 'one_sheets_not_configured' });
+            if (!lastServiceResult?.services) return send(409, { error: 'no_service_results' });
+            const { eventRow, actionRows } = eventRows(lastServiceResult);
+            const sheet = oneEnv.GHOST_LINKS_SHEET_ID;
+            lastOneAction = Date.now();
+            const append = (range, values) => run('sheetsAppend', { pathVariables: { spreadsheetId: sheet, spreadsheet_id: sheet, range }, query: { valueInputOption: 'USER_ENTERED' }, body: { values } });
+            await append('Events!A1', [eventRow]);
+            if (actionRows.length) await append('Actions!A1', actionRows);
+            return send(200, { ok: true, sent: 'sheets', events: 1, actions: actionRows.length });
+          }
+          return send(404, { error: 'not_found' });
+        } catch (error) {
+          return send(error.status || 502, { error: String(error.message || 'one_action_failed').split(':')[0], platformStatus: error.platformStatus });
+        }
       }
       // A labeled manual pipeline test on an identifier the user types (not a Streetli case).
       if (path === '/api/research/test' && request.method === 'POST') {
@@ -239,7 +302,7 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
       if (path === '/api/review-actions' && request.method === 'GET') {
         const feedNow = lastFeed || validateCaseFeed(await getCases());
         const actions = await reviews.list(feedNow.mode);
-        return send(200, { mode: feedNow.mode, actions, leaderboard: leaderboard(actions) });
+        return send(200, { mode: feedNow.mode, actions, leaderboard: leaderboard(actions), one: oneStatus(await oneConfig(), oneEnv) });
       }
       if (path === '/api/review-actions' && request.method === 'POST') {
         const decision = parseDecision(await readJsonBody(request));

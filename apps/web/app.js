@@ -37,6 +37,8 @@
   let hunterName = '';
   try { hunterName = localStorage.getItem('ghost-links-hunter') || ''; } catch { hunterName = ''; }
   let board = [];
+  let oneReady = { discord: false, gmail: false, sheets: false };
+  const oneMissing = app => `Connect ${app} in One first (npm run one:setup).`;
   const rankTitle = points => points >= 100 ? '⭐ Spectral Superhero' : points >= 30 ? '🦸 Poltergeist Wrangler' : points >= 10 ? '👻 Ghost Buster' : '🕯 Rookie Hunter';
 
   // Leaderboard: Halloween mode only. Counts reviewer decisions recorded in this app.
@@ -173,6 +175,7 @@
       const payload = await response.json();
       decisions = response.ok && payload?.mode === feed?.mode && payload.actions && typeof payload.actions === 'object' ? payload.actions : {};
       board = response.ok && Array.isArray(payload?.leaderboard) ? payload.leaderboard : [];
+      if (response.ok && payload?.one) oneReady = payload.one;
       renderLeaderboard();
     } catch { decisions = {}; }
     await loadFindings(false);
@@ -221,7 +224,14 @@
       buttons.append(button);
     }
     if (!current) section.append(note);
-    section.append(buttons, status);
+    const ticket = make('button', 'secondary-button one-button', t('📣 Send to the team (Discord via One)', '📣 Summon the ghostbusters (Discord via One)'));
+    ticket.type = 'button';
+    ticket.disabled = !oneReady.discord;
+    ticket.title = oneReady.discord ? 'Posts a review ticket to the team channel' : oneMissing('Discord');
+    ticket.addEventListener('click', () => oneCall('/api/one/team-ticket', { caseId: item.id, note: note.value || '', by: hunterName }, ticket, status,
+      () => t('Posted to the team channel through One.', '📣 The ghostbusters have been summoned (posted via One).')));
+    section.append(buttons, ticket, status);
+    if (!oneReady.discord) section.append(make('p', 'evidence-meta', oneMissing('Discord')));
     return section;
   }
 
@@ -631,6 +641,46 @@
     runResearch('/api/ask', { request: ask.input.value }, ask.output, ask.submit, renderAskResult);
   });
 
+  // ---- One actions (Discord / Gmail / Google Sheets), always on an explicit click ----
+  async function oneCall(url, body, button, status, success) {
+    button.disabled = true;
+    status.textContent = 'Working…';
+    try {
+      const response = await fetch(url, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(({ invalid_email: 'Enter a valid email address.', no_service_results: 'Run a service search first.', one_throttled: 'Please wait a few seconds and try again.',
+        one_action_failed: `One could not complete the action${payload.platformStatus ? ` (the app returned ${payload.platformStatus})` : ''}. Check the connection in One.` })[payload.error]
+        || (String(payload.error || '').includes('not_configured') ? 'That app is not connected in One yet.' : 'The action failed.'));
+      status.textContent = success(payload);
+    } catch (error) { status.textContent = error.message; }
+    finally { button.disabled = false; }
+  }
+
+  function serviceActions(result) {
+    const box = make('div', 'one-actions');
+    const status = make('p', 'research-note');
+    status.setAttribute('role', 'status');
+    const emailForm = make('form', 'one-form');
+    const email = make('input', 'decision-note');
+    email.type = 'email'; email.maxLength = 254; email.placeholder = 'your@email.com'; email.setAttribute('aria-label', 'Email this list to');
+    const send = make('button', 'secondary-button', t('📧 Email me this list', '📧 Send this list to my inbox'));
+    send.type = 'submit'; send.disabled = !oneReady.gmail; send.title = oneReady.gmail ? '' : oneMissing('Gmail');
+    emailForm.append(email, send);
+    emailForm.addEventListener('submit', event => { event.preventDefault(); oneCall('/api/one/email-list', { to: email.value }, send, status, payload => `Sent “${payload.subject}” through One.`); });
+    const log = make('button', 'secondary-button', result.kind === 'event' ? t('🗂 Log event + action list (Sheets)', '🗂 Record this calamity in the grimoire (Sheets)') : '🗂 Add to action list (Sheets)');
+    log.type = 'button'; log.disabled = !oneReady.sheets; log.title = oneReady.sheets ? '' : oneMissing('Google Sheets');
+    log.addEventListener('click', () => oneCall('/api/one/log-event', {}, log, status, payload => `Logged 1 event and ${payload.actions} action items to the tracker through One.`));
+    box.append(make('div', 'eyebrow', 'Take action (via One)'), emailForm, log, status);
+    if (!oneReady.gmail || !oneReady.sheets) box.append(make('p', 'evidence-meta', `Not connected yet: ${[!oneReady.gmail && 'Gmail', !oneReady.sheets && 'Google Sheets'].filter(Boolean).join(', ')}. Run npm run one:setup after connecting them in One.`));
+    return box;
+  }
+
+  const report = { form: $('report-form'), email: $('report-email'), submit: $('report-submit'), status: $('report-status') };
+  if (report.form) report.form.addEventListener('submit', event => {
+    event.preventDefault();
+    oneCall('/api/one/ghost-report', { to: report.email.value }, report.submit, report.status, payload => `Sent “${payload.subject}” through One.`);
+  });
+
   // ---- Event check: which nearby services can still help after an event ----
   const eventStatus = {
     reported_closed: ['Reported closed', 'found'], reported_relocated: ['Reported moved', 'found'],
@@ -714,7 +764,8 @@
       news.append(list); box.append(news);
     }
     if (Array.isArray(result.areaRecords) && result.areaRecords.length) box.append(make('p', 'research-note', `${result.areaRecords.length} Streetli records are in this area and were included in the search.`));
-    box.append(make('p', 'report-status', 'Statuses are what public sources report. Nothing was edited or sent.'));
+    if (services.length) box.append(serviceActions(result));
+    box.append(make('p', 'report-status', 'Statuses are what public sources report. Nothing is sent unless you click an action above.'));
     return box;
   }
 
