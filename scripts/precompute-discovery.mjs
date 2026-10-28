@@ -8,7 +8,7 @@ const args = process.argv.slice(2);
 if (args.some(value => value !== '--watch') || args.length > 1) throw new Error('Use npm run precompute [-- --watch].');
 await loadLocalEnv();
 if (!process.env.STREETLI_CASES_URL) throw new Error('Configure the live STREETLI_CASES_URL and server-only token first.');
-const getCases = createLiveSource({ sourceUrl: process.env.STREETLI_CASES_URL, token: process.env.STREETLI_CASES_TOKEN });
+const getCases = createLiveSource({ sourceUrl: process.env.STREETLI_CASES_URL, token: process.env.STREETLI_CASES_TOKEN, timeoutMs: 300000 });
 const directory = resolve('data');
 const outputPath = resolve(directory, 'discovery-plan.json');
 

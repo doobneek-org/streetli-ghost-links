@@ -33,6 +33,9 @@ command. It automatically reads optional worker receipts from ignored
 store actual completed/error receipts there or use the same helper with its
 own durable results store. A failed source load leaves the last saved plan
 unchanged, with its original generation time.
+The first baseline import can take several minutes; this warm-up command allows
+up to five minutes. Ordinary interactive source requests retain a shorter
+timeout, and subsequent bridge reads reuse the preloaded source results.
 
 Research one identifier once even if multiple branches reference it. Preserve
 the associated case IDs so verification can check each provider and branch.
