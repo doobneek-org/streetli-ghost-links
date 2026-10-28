@@ -8,6 +8,7 @@ import { applyPlan, cleanPlan, categoryOf } from '../apps/agent/ask.mjs';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // A stand-in for the Python process: records its stdin and replays scripted output.
 function fakeSpawn(lines, { code = 0 } = {}) {
@@ -43,7 +44,9 @@ test('generic automated review flags cannot become compromise allegations during
 });
 
 async function withServer(options, run) {
-  const server = await createFixtureServer({ discovery: (await fakeDiscovery(uncertainOutcome)).discovery, ...options });
+  // Scripted discovery and a temporary demo cache: tests never touch real data/ files or paid providers.
+  const cacheFile = pathToFileURL(join(await mkdtemp(join(tmpdir(), 'gl-route-')), 'route-cache.json'));
+  const server = await createFixtureServer({ discovery: (await fakeDiscovery(uncertainOutcome)).discovery, one: { cacheFile }, ...options });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   try { await run(`http://127.0.0.1:${server.address().port}`); } finally { await new Promise(resolve => server.close(resolve)); }
 }
