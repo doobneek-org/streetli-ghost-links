@@ -35,6 +35,14 @@ provider clients, and genuine progress events. Implement prompt loading from
 `prompts/`; coordinate final text with Ivan rather than duplicating domain rules
 in UI components or scattering them through tool clients.
 
+The first prompt pack is now available through `prompts/manifest.json`: request
+selection, reference verification, correction preparation, structured-output
+schemas and eleven offline evaluation cases. Use
+`packages/contracts/research-output.mjs` after model generation. These gates are
+tested, but no model-quality score has been established and the prompts are not
+yet wired into the current search UI. See `prompts/README.md` for how to capture
+actual model predictions and score them without committing results or secrets.
+
 ## Build in this order
 
 1. Extend the existing prompt-first interface against the fixture/live case API. Suggested
