@@ -687,6 +687,7 @@
     const services = Array.isArray(result.services) ? result.services.slice(0, 20) : [];
     const disrupted = services.filter(s => ['reported_closed', 'reported_relocated', 'reported_changed_hours'].includes(s.status));
     const available = services.filter(s => !disrupted.includes(s));
+    if (result.searchedArea) box.append(make('p', 'research-note', `Few services are listed in ${result.event?.area || 'that area'} itself, so this also includes ${result.searchedArea}.`));
     box.append(make('p', 'research-summary', `${services.length} services found nearby · ${disrupted.length} report a disruption · checked ${checkedTime(result.observedAt)}`));
     if (disrupted.length) {
       box.append(make('div', 'eyebrow', finding ? t('Recent closure or change notices', 'Ominous notices (closed or changed)') : t('Reported disruption', 'Cursed (reported closed or changed)')));
