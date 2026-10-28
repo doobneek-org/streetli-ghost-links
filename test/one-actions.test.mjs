@@ -99,7 +99,10 @@ test('demo mode returns saved results labeled as saved, and misses cleanly', asy
   const { pathToFileURL } = await import('node:url');
   const cacheFile = pathToFileURL(join(await mkdtemp(join(tmpdir(), 'gl-cache-')), 'route-cache.json'));
   const python = async payload => payload.stage === 'route-request' ? { output: { route: 'find_services', reason: 'test' } } : { kind: 'find', stopped: null, services: [{ name: 'Pantry', status: 'no_notice_found', checks: [] }], news: [] };
-  const server = await createFixtureServer({ python, one: { cacheFile } });
+  // The route gate asks whether a real interpreter exists on disk, so without this stub the
+  // test needs a provisioned apps/agent/.venv and fails on a clean checkout. Python itself is
+  // already stubbed above, so nothing here depends on a local install.
+  const server = await createFixtureServer({ python, one: { cacheFile }, discovery: { available: () => true, busy: false } });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   try {

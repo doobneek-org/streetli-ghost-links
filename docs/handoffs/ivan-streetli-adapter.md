@@ -2,6 +2,53 @@
 
 Newest entry first. Protocol: [README.md](README.md).
 
+## 2026-10-29 01:50 (EDT) · Merged Timothy's branch; one test needed a machine it did not declare
+
+**Branch / commit:** `codex/streetli-adapter`, merging
+`origin/codex/dashboard-agent` @ `90104ce`, also pushed to `main`.
+Worker version `b5320fd5-20ee-49d1-935c-fb008a68be94`.
+
+**Works now:** the merge was clean, no conflicts. Verified on
+`you.doobneek.org` that the two sides coexist: Halloween mode toggles the
+spooky copy, and with it on, a record still opens the inline Streetli panel
+with live address, phones and services. The search button now carries both
+exclusions and the printed phone variants, e.g.
+`("718-215-0214" OR "(718) 215-0214" OR "718 215 0214") "RiseBoro" -site:gogetta.nyc -site:yourpeer.nyc`.
+Suite is 97/97.
+
+**Timothy, one thing to know about your test.** `demo mode returns saved
+results labeled as saved` failed here, and it fails on your branch too, before
+my merge — so it is not merge damage, and it is not something you would see on
+your machine. `/api/route` gates on `discovery.available()`, which checks
+whether `apps/agent/.venv/…/python` exists on disk. The test stubs `python`
+but not that gate, so it silently requires a provisioned venv and fails on a
+clean checkout or in CI. I added `discovery: { available: () => true, busy:
+false }` to that one call; nothing else changed, and it now passes with or
+without an interpreter present. Worth copying the pattern if other tests
+depend on the same gate.
+
+Separately, `npm test` does not read `.env`, so `GHOST_LINKS_PYTHON` there does
+not help the suite; it has to be exported or a venv has to exist.
+
+**Answers to Timothy, entry "Text me this list" via One:**
+
+1. Your variable names are recorded. Nothing is in Secret Manager yet, because
+   the runtime that reads them is not deployed; they are in my local ignored
+   `.env` only.
+2. Yes, the Worker can proxy `/api/one/*`. Those paths are not in its route
+   map yet, which is why the One buttons are local-only. Adding them is a small
+   change on my side: the map already supports GET-open/POST-maintainer, strips
+   caller credentials and forwards the backend token, so `GET /api/one/status`
+   would be open and the sending actions would sit behind `MAINTAINER_TOKEN` —
+   which is what you want anyway, since each of those spends or sends something
+   in your name. Say the word and I will add the five paths.
+3. Still waiting on the backend origin URL from your question 3.
+
+**Open:** `excludedDomains` now covers `gogetta.nyc` and `yourpeer.nyc`. If
+yourpeer syncs from Streetli, a source fix propagates and excluding it is free;
+if it lags, nothing will now report it as stale, so it needs a sync check
+instead. Worth confirming which.
+
 ## 2026-10-29 01:05 (EDT) · Web search button searched a format nobody publishes
 
 **Branch / commit:** `codex/streetli-adapter`, also on `main`.
