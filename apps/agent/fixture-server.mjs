@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -14,6 +15,14 @@ const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 const contentTypes = { '/': 'text/html; charset=utf-8', '/app.js': 'text/javascript; charset=utf-8', '/styles.css': 'text/css; charset=utf-8' };
 const assetNames = { '/': 'index.html', '/app.js': 'app.js', '/styles.css': 'styles.css' };
 const safeError = (code, status = 503) => Object.assign(new Error(code), { code, status });
+const BACKEND_TOKEN = /^[A-Za-z0-9_-]{32,256}$/;
+
+// Hosted backend mode (Cloud Run behind the Cloudflare Worker): every request except
+// /health must carry the Worker's `Bearer RESEARCH_BACKEND_TOKEN`.
+export function backendAuthorized(header, backendToken) {
+  const supplied = /^Bearer ([A-Za-z0-9_-]{32,256})$/.exec(header || '')?.[1];
+  return Boolean(supplied && supplied.length === backendToken.length && timingSafeEqual(Buffer.from(supplied), Buffer.from(backendToken)));
+}
 
 export async function loadLocalEnv(path = resolve('.env'), environment = process.env) {
   let file;
@@ -102,7 +111,7 @@ async function readJsonBody(request, limit = 4096) {
   try { return JSON.parse(body); } catch { throw safeError('invalid_request', 400); }
 }
 
-export async function createFixtureServer({ sourceUrl = '', token = '', fetchImpl = fetch, source = null, research = createResearchRunner(), reviews = createReviewStore(), discovery = createDiscoveryRunner(), python = runPython, one = {} } = {}) {
+export async function createFixtureServer({ sourceUrl = '', token = '', fetchImpl = fetch, source = null, research = createResearchRunner(), reviews = createReviewStore(), discovery = createDiscoveryRunner(), python = runPython, one = {}, backendToken = '' } = {}) {
   const oneConfig = one.loadConfig || loadOneConfig;
   const oneFetch = one.fetchImpl || fetch;
   const oneEnv = one.env || process.env;
@@ -134,7 +143,11 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
     response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
     const send = (status, body) => { response.setHeader('Content-Type', 'application/json; charset=utf-8'); response.writeHead(status); response.end(JSON.stringify(body)); };
     const host = String(request.headers.host || '');
-    if (!/^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i.test(host)) return send(403, { error: 'local_dev_only' });
+    if (backendToken) {
+      // Browsers never call the backend directly; the Worker sends no Origin.
+      if (request.headers.origin) return send(403, { error: 'cross_origin_request_rejected' });
+      if (!(request.url === '/health' && request.method === 'GET') && !backendAuthorized(request.headers.authorization, backendToken)) return send(401, { error: 'backend_token_required' });
+    } else if (!/^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i.test(host)) return send(403, { error: 'local_dev_only' });
     if (request.headers.origin && request.headers.origin !== `http://${host}`) return send(403, { error: 'cross_origin_request_rejected' });
     if (request.headers['sec-fetch-site'] === 'cross-site') return send(403, { error: 'cross_origin_request_rejected' });
     let path;
@@ -409,7 +422,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be 1–65535.');
   const sourceUrl = process.env.STREETLI_CASES_MODE === 'fixture' ? '' : process.env.STREETLI_CASES_URL?.trim() || PUBLIC_CASES_URL;
   const live = Boolean(sourceUrl);
-  const server = await createFixtureServer({ sourceUrl, token: process.env.STREETLI_CASES_TOKEN || '' });
-  server.listen(port, '127.0.0.1', () => console.log(`Ghost Links dev app: http://127.0.0.1:${port} (${sourceUrl === PUBLIC_CASES_URL ? 'shared live case feed' : live ? 'custom live case feed' : 'fictional fixtures'})`));
+  // HOST=0.0.0.0 (the container default) is the hosted backend and requires a backend token.
+  const listenHost = process.env.HOST?.trim() || '127.0.0.1';
+  const backendToken = process.env.RESEARCH_BACKEND_TOKEN?.trim() || '';
+  if (backendToken && !BACKEND_TOKEN.test(backendToken)) throw new Error('RESEARCH_BACKEND_TOKEN must match ^[A-Za-z0-9_-]{32,256}$.');
+  if (!['127.0.0.1', 'localhost', '::1'].includes(listenHost) && !backendToken) throw new Error(`Refusing to listen on ${listenHost} without RESEARCH_BACKEND_TOKEN.`);
+  const server = await createFixtureServer({ sourceUrl, token: process.env.STREETLI_CASES_TOKEN || '', backendToken });
+  server.listen(port, listenHost, () => console.log(`Ghost Links ${backendToken ? 'research backend' : 'dev app'}: http://${listenHost}:${port} (${sourceUrl === PUBLIC_CASES_URL ? 'shared live case feed' : live ? 'custom live case feed' : 'fictional fixtures'})`));
   server.on('error', error => { console.error(error.code || 'dev_server_failed'); process.exitCode = 1; });
 }

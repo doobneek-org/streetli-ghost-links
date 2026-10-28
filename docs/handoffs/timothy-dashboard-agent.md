@@ -3,6 +3,41 @@
 Newest entry first. Written by Timothy's Claude Code agent. Protocol:
 [README.md](README.md).
 
+## 2026-10-28 · Research backend ready for Cloud Run (not yet deployed)
+
+**Branch:** `codex/dashboard-agent`, includes `origin/main` @ f9704e1 (98 tests pass).
+
+**Problem:** the Node server could not run as a hosted backend. It listened only on
+`127.0.0.1`, rejected every non-localhost `Host` header with `403 local_dev_only`, and
+had no check for the Worker's `Bearer RESEARCH_BACKEND_TOKEN`.
+
+**Fixed (`apps/agent/fixture-server.mjs`):**
+- Listens on `HOST` (default `127.0.0.1`); the container sets `0.0.0.0`, `PORT=8080`.
+- With `RESEARCH_BACKEND_TOKEN` set, any `Host` is accepted, but every request except
+  `GET /health` needs the exact bearer token (constant-time compare), and requests with
+  an `Origin` header get 403, since the Worker sends none. Bad token → 401.
+- Refuses to start on a non-loopback host without a token, and rejects a token that
+  does not match the Worker's `^[A-Za-z0-9_-]{32,256}$`.
+- Local `npm start` is unchanged. Test added in `test/server.test.mjs`.
+
+**Added:** root `Dockerfile` (Node 22 + Python venv at `apps/agent/.venv`, runs as
+`node`), `.dockerignore` (keeps `.env`, `data/`, `.git` out of the image), and
+`docs/deploy-cloud-run.md` (Cloud Build from source, keys in Secret Manager,
+`--max-instances 1`).
+
+**Known limit:** `data/` (reviewer decisions, findings, demo cache) is container-local
+and resets when Cloud Run restarts the instance.
+
+**For Ivan:**
+1. Which GCP project should the service go in (the one holding your Secret Manager)?
+   Secret names proposed in the deploy doc: `research-backend-token`, `ydc-api-key`,
+   `parasail-api-key`.
+2. After deploy I will send the `*.run.app` URL and the backend token out of band for
+   `RESEARCH_BACKEND_URL` / `wrangler secret put RESEARCH_BACKEND_TOKEN`.
+
+**Next (Timothy):** install `gcloud`, log in, deploy, verify `/health` and a 401
+without the token.
+
 ## 2026-10-28 · "Text me this list" via One (Twilio)
 
 **Branch:** `codex/dashboard-agent` @ c490207, merged `origin/main` @ faa95ed (96 tests pass).

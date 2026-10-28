@@ -1,0 +1,23 @@
+# Secrets and local state never enter the image.
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+data/
+exports/
+logs/
+*.log
+*.pem
+*.key
+*credentials*.json
+# Rebuilt inside the image or not needed at runtime.
+.git/
+.github/
+.wrangler/
+node_modules/
+**/.venv/
+**/__pycache__/
+*.pyc
+test/
+docs/
