@@ -23,6 +23,52 @@ The entry prompt may be “How can I make the social safety net better?” Route
 
 These roles are planned. Add setup details and exact SDK/API usage as integrations become functional. Verify provider capabilities and the event requirements before presenting an integration as complete.
 
+## Research flow (Python, working from the command line)
+
+`research/` holds a CrewAI flow that researches one case. It is not yet wired
+into the web app.
+
+| Step | Runs on | What it does |
+| --- | --- | --- |
+| guard | code | Refuses fixtures (never sent to live search) and cases not `approved_for_research`. `--manual-test` runs on an identifier you supply and labels everything as a test. |
+| search | You.com Search | Searches the old identifier as pages write it (`718-680-6344`, `example.org/path`) plus the organization name; skips the retired website itself; keeps up to 5 pages. |
+| fetch | You.com Contents | Fetches those pages as markdown. Pages that fail stay `unknown`. |
+| match | code | Literal match of the old identifier. Pages without it become `not_present` with no model call; matches keep ~500 characters of context. |
+| verify | CrewAI agent → Parasail | One call per case judges every matching excerpt: `still_present`, `possible_match`, `not_present`, or `unknown`, with an exact quote. A `still_present` quote not found verbatim is downgraded to `possible_match`. |
+| draft | CrewAI agent → Parasail | A correction request per `still_present` page. Drafts only; nothing is sent. Manual-test drafts carry `testOnly: true`. |
+
+Output: contract-shaped `externalReferences` (`url`, `observedAt`, `state`,
+`quote`, `reportState`), plus `notes`, `drafts`, and `placeholderPrompts`.
+Until Ivan adds `prompts/verify-reference.md` and `prompts/prepare-correction.md`,
+the flow uses clearly marked placeholders from `research/prompts.py` and reports
+`placeholderPrompts: true`.
+
+Setup (Python 3.10–3.13), once:
+
+```sh
+cd apps/agent
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
+Needs `YDC_API_KEY`, `PARASAIL_API_KEY`, `PARASAIL_BASE_URL`, `PARASAIL_MODEL` in
+the root `.env`. `PARASAIL_REASONING_EFFORT=low` (default) cuts reasoning tokens
+sharply on `parasail-glm-53`.
+
+Run from `apps/agent/`:
+
+```sh
+# A case from the running app's feed (start the app with `npm start` first)
+.venv/bin/python -m research.run --case-id <id>
+
+# A manual pipeline test on a public identifier (not a Streetli case)
+.venv/bin/python -m research.run --manual-test --kind phone \
+  --value "+17185550100" --org "Organization name" --locality "Brooklyn, NY"
+
+# Machine-readable events and result, one JSON object per line
+.venv/bin/python -m research.run --case-id <id> --jsonl
+```
+
 ## Evidence and output
 
 The v1 `externalReferences` fields are `url`, `observedAt`, `state`, `quote`, and `reportState`; see `packages/contracts/cases.mjs`. Coordinate additions with the contract owner. Useful evidence includes a public source URL, observation time, quoted passage containing the old identifier, provider/branch association, and the supported finding. Distinguish `still_present`, `unknown`, and a separately verified correction. A request failure, empty search, removed webpage, or submission receipt does not alone prove that a listing was fixed.
