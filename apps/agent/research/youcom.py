@@ -1,10 +1,8 @@
 """You.com Search and Contents clients (header X-API-Key, per the event guide)."""
-import re
-from urllib.parse import urlparse
-
 import httpx
 
 from .config import require
+from .public_urls import public_url, retrieved_pages
 
 SEARCH_URL = "https://ydc-index.io/v1/search"
 CONTENTS_URL = "https://ydc-index.io/v1/contents"
@@ -42,16 +40,11 @@ def search(query: str, count: int, freshness: str | None = None) -> list[dict]:
             "snippets": [s for s in snippets if isinstance(s, str)],
             "page_age": item.get("page_age") or "",
         })
-    return [r for r in results if r["url"].startswith(("http://", "https://"))]
+    return [r for r in results if public_url(r["url"])]
 
 
 def _fetchable(url: str) -> bool:
-    try:
-        parsed = urlparse(url)
-    except ValueError:
-        return False
-    return parsed.scheme in ("http", "https") and bool(parsed.hostname) and not parsed.username \
-        and not re.search(r"\s", url) and len(url) <= 2048
+    return public_url(url)
 
 
 def contents(urls: list[str], fresh: bool = False) -> dict[str, str]:
@@ -73,8 +66,4 @@ def contents(urls: list[str], fresh: bool = False) -> dict[str, str]:
             except YouComError:
                 pass
         return pages
-    pages = {}
-    for item in data if isinstance(data, list) else []:
-        if isinstance(item, dict) and isinstance(item.get("markdown"), str):
-            pages[item.get("url", "")] = item["markdown"]
-    return pages
+    return retrieved_pages(data, urls)

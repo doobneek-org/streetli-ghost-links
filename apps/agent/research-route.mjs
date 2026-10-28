@@ -4,9 +4,9 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { resolveResearchPython } from './python-runtime.mjs';
 
 const AGENT_DIR = fileURLToPath(new URL('.', import.meta.url));
-const PYTHON = fileURLToPath(new URL('./.venv/bin/python', import.meta.url));
 const TIMEOUT_MS = 180000;
 const MAX_LINE = 256 * 1024;
 const KINDS = ['website', 'phone', 'email'];
@@ -28,7 +28,7 @@ export function manualTestCase(body) {
   };
 }
 
-export function createResearchRunner({ python = PYTHON, cwd = AGENT_DIR, spawnImpl = spawn, timeoutMs = TIMEOUT_MS } = {}) {
+export function createResearchRunner({ python = resolveResearchPython(), cwd = AGENT_DIR, spawnImpl = spawn, timeoutMs = TIMEOUT_MS } = {}) {
   let running = false;
   return {
     get busy() { return running; },

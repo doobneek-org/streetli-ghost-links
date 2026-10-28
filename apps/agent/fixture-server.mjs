@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { validateCaseFeed } from '../../packages/contracts/cases.mjs';
+import { PUBLIC_CASES_URL } from '../../packages/contracts/case-source.mjs';
 import { createResearchRunner, manualTestCase } from './research-route.mjs';
 import { createReviewStore, leaderboard, parseDecision } from './review-actions.mjs';
 import { createDiscoveryRunner, runPython } from './discovery-runner.mjs';
@@ -27,7 +28,9 @@ export async function loadLocalEnv(path = resolve('.env'), environment = process
 export function createLiveSource({ sourceUrl, token, fetchImpl = fetch, ttlMs = 300000, timeoutMs = 120000 } = {}) {
   let url;
   try { url = new URL(sourceUrl); } catch { throw safeError('invalid_case_source_config', 500); }
-  if (!token || token.length < 24 || !Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 300000
+  const publicSource = url.href === PUBLIC_CASES_URL;
+  if ((!publicSource && (typeof token !== 'string' || token.length < 24))
+    || !Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 300000
     || url.username || url.password || url.search || url.hash
     || !['http:', 'https:'].includes(url.protocol)
     || (url.protocol === 'http:' && !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))) throw safeError('invalid_case_source_config', 500);
@@ -41,7 +44,7 @@ export function createLiveSource({ sourceUrl, token, fetchImpl = fetch, ttlMs = 
       const endpoint = new URL(url);
       if (refresh) endpoint.searchParams.set('refresh', '1');
       let response;
-      try { response = await fetchImpl(endpoint, { headers: { Authorization: `Bearer ${token}` }, redirect: 'error', signal: AbortSignal.timeout(timeoutMs) }); }
+      try { response = await fetchImpl(endpoint, { headers: publicSource ? {} : { Authorization: `Bearer ${token}` }, redirect: 'error', signal: AbortSignal.timeout(timeoutMs) }); }
       catch { throw safeError('case_source_unavailable'); }
       if (!response.ok) throw safeError(response.status === 401 ? 'case_source_unauthorized' : 'case_source_unavailable');
       if (Number(response.headers?.get('content-length')) > MAX_RESPONSE_BYTES) throw safeError('case_source_too_large');
@@ -117,7 +120,8 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
     let path;
     try { path = new URL(request.url, `http://${host}`).pathname; } catch { return send(400, { error: 'invalid_request' }); }
     try {
-      if (path === '/health' && request.method === 'GET') return send(200, { ok: true, mode, liveResearchImplemented: false, caseCount: lastFeed?.cases.length ?? null, generatedAt: lastFeed?.generatedAt ?? null });
+      if (path === '/health' && request.method === 'GET') return send(200, { ok: true, mode, liveResearchImplemented: true,
+        researchRuntimeAvailable: discovery.available(), caseCount: lastFeed?.cases.length ?? null, generatedAt: lastFeed?.generatedAt ?? null });
       if (path === '/api/cases' && request.method === 'GET') {
         lastFeed = validateCaseFeed(await getCases());
         return send(200, lastFeed);
@@ -170,7 +174,7 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
         if (feedNow.mode !== 'live') return send(200, { mode: feedNow.mode, findings: {}, eligibleCaseIds: [] });
         const plan = await discovery.plan(feedNow, { maxJobs: 100 });
         const ids = new Set(feedNow.cases.map(item => item.id));
-        const findings = Object.fromEntries(Object.entries(await discovery.findings()).filter(([id]) => ids.has(id)));
+        const findings = Object.fromEntries(Object.entries(await discovery.findings(feedNow)).filter(([id]) => ids.has(id)));
         return send(200, { mode: feedNow.mode, findings, eligibleCaseIds: plan.eligibleCaseIds, due: plan.jobs.length });
       }
       if (path === '/api/ask' && request.method === 'POST') {
@@ -275,8 +279,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   await loadLocalEnv();
   const port = Number(process.env.PORT || 4317);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be 1–65535.');
-  const live = Boolean(process.env.STREETLI_CASES_URL);
-  const server = await createFixtureServer({ sourceUrl: process.env.STREETLI_CASES_URL || '', token: process.env.STREETLI_CASES_TOKEN || '' });
-  server.listen(port, '127.0.0.1', () => console.log(`Ghost Links dev app: http://127.0.0.1:${port} (${live ? 'live private case feed' : 'fictional fixtures'})`));
+  const sourceUrl = process.env.STREETLI_CASES_MODE === 'fixture' ? '' : process.env.STREETLI_CASES_URL?.trim() || PUBLIC_CASES_URL;
+  const live = Boolean(sourceUrl);
+  const server = await createFixtureServer({ sourceUrl, token: process.env.STREETLI_CASES_TOKEN || '' });
+  server.listen(port, '127.0.0.1', () => console.log(`Ghost Links dev app: http://127.0.0.1:${port} (${sourceUrl === PUBLIC_CASES_URL ? 'shared live case feed' : live ? 'custom live case feed' : 'fictional fixtures'})`));
   server.on('error', error => { console.error(error.code || 'dev_server_failed'); process.exitCode = 1; });
 }

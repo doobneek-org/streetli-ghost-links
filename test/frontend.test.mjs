@@ -170,6 +170,17 @@ test('categories group failed verifications and a reviewer decision is saved loc
   assert.ok(saved);
 });
 
+test('generic saved scan leads have their own category and no compromise badge', async () => {
+  const item=makeCase('generic-scan','website','flagged');
+  item.internal.source='saved_scan'; item.internal.reasonCode='scan_unverified_content_review';
+  const app=await startApp(makeFeed([item]));
+  app.by('data-category','scan').click();
+  assert.equal(app.$('record-list').children.length,1);
+  assert.doesNotMatch(app.$('record-list').textContent,/Compromise risk/);
+  app.by('data-category','compromise').click();
+  assert.equal(app.$('record-list').children.length,0);
+});
+
 test('a live-source failure stays explicit and refresh failure preserves dated records', async () => {
   const failed = await startApp(makeFeed([]), { failInitial: true });
   assert.equal(failed.$('record-list').children.length, 0); assert.equal(failed.$('empty-state').hidden, false);

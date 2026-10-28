@@ -5,17 +5,43 @@
 // Findings are research leads with cited evidence. Nothing here sends a report,
 // edits Streetli, or changes a case's review state.
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildDiscoveryPlan } from '../../packages/contracts/discovery-plan.mjs';
+import { buildDiscoveryPlan, normalizeDiscoveryIdentifier } from '../../packages/contracts/discovery-plan.mjs';
 import { validateVerification } from '../../packages/contracts/research-output.mjs';
+import { resolveResearchPython, researchPythonAvailable } from './python-runtime.mjs';
 
 const AGENT_DIR = fileURLToPath(new URL('.', import.meta.url));
-const PYTHON = fileURLToPath(new URL('./.venv/bin/python', import.meta.url));
 const DATA = fileURLToPath(new URL('../../data/', import.meta.url));
 const JOB_TIMEOUT_MS = 180000;
+const FINDING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function identifierGroups(cases) {
+  const groups=new Map();
+  for (const item of cases) {
+    const identifier=normalizeDiscoveryIdentifier(item.identifier);
+    if (!identifier) continue;
+    const key=JSON.stringify(identifier);
+    if (!groups.has(key)) groups.set(key,[]);
+    groups.get(key).push(item);
+  }
+  return [...groups.values()];
+}
+
+function currentCaseBindings(feed, time) {
+  if (feed.mode !== 'live') return new Map();
+  const groups=identifierGroups(feed.cases);
+  const bindings=new Map();
+  // Chunk whole identifier groups so every branch participates in its source
+  // binding, including groups beyond the planner's per-batch 100-job limit.
+  for(let start=0;start<groups.length;start+=100) {
+    const cases=groups.slice(start,start+100).flat();
+    const plan=buildDiscoveryPlan({...feed,cases},{now:time,maxJobs:100});
+    for(const job of plan.jobs) for(const id of job.caseIds) bindings.set(id,job.binding);
+  }
+  return bindings;
+}
 
 async function readJson(path, fallback) {
   try { return JSON.parse(await readFile(path, 'utf8')); } catch { return fallback; }
@@ -28,7 +54,7 @@ async function writeJson(path, value) {
 }
 
 // Runs the Python CLI once with a JSON payload; resolves with its result line.
-export function runPython(payload, { onEvent = () => {}, python = PYTHON, cwd = AGENT_DIR, spawnImpl = spawn, timeoutMs = JOB_TIMEOUT_MS } = {}) {
+export function runPython(payload, { onEvent = () => {}, python = resolveResearchPython(), cwd = AGENT_DIR, spawnImpl = spawn, timeoutMs = JOB_TIMEOUT_MS } = {}) {
   return new Promise(resolve => {
     const child = spawnImpl(python, ['-m', 'research.run', '--stdin', '--jsonl'], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
     let buffer = ''; let result = null; let done = false;
@@ -54,7 +80,7 @@ export function runPython(payload, { onEvent = () => {}, python = PYTHON, cwd = 
   });
 }
 
-export function createDiscoveryRunner({ dataDir = DATA, run = runPython, available = () => existsSync(PYTHON), now = () => new Date() } = {}) {
+export function createDiscoveryRunner({ dataDir = DATA, run = runPython, available = researchPythonAvailable, now = () => new Date() } = {}) {
   const resultsPath = `${dataDir}discovery-results.json`;
   const findingsPath = `${dataDir}discovery-findings.json`;
   let running = false;
@@ -87,7 +113,7 @@ export function createDiscoveryRunner({ dataDir = DATA, run = runPython, availab
           finding = { verdict: 'uncertain', gate: `rejected:${String(error.message).replace(/^.*: /, '')}`, evidence: [], missingEvidence: [], summary: 'The model output failed the evidence gate and was discarded.' };
         }
       }
-      findings[item.id] = { ...finding, caseId: item.id, jobId: job.id, checkedAt: outcome.checkedAt,
+      findings[item.id] = { ...finding, caseId: item.id, jobId: job.id, binding: job.binding, checkedAt: outcome.checkedAt,
         pages: outcome.documents.filter(document => document.status === 'fetched').length };
       saved.push(findings[item.id]);
     }
@@ -98,7 +124,17 @@ export function createDiscoveryRunner({ dataDir = DATA, run = runPython, availab
   return {
     get busy() { return running; },
     available,
-    findings: () => readJson(findingsPath, {}),
+    async findings(feed) {
+      const saved=await readJson(findingsPath, {});
+      if (!feed) return saved;
+      const time=now().getTime();
+      const bindings=currentCaseBindings(feed,time);
+      return Object.fromEntries(Object.entries(saved).filter(([id,finding])=> {
+        const checked=Date.parse(finding.checkedAt || '');
+        return finding.binding === bindings.get(id) && bindings.has(id)
+          && Number.isFinite(checked) && checked <= time && time-checked < FINDING_MAX_AGE_MS;
+      }));
+    },
     async plan(feed, options = {}) {
       return buildDiscoveryPlan(feed, { previousResults: await readJson(resultsPath, []), now: now().getTime(), ...options });
     },
@@ -107,7 +143,12 @@ export function createDiscoveryRunner({ dataDir = DATA, run = runPython, availab
       if (running) throw Object.assign(new Error('research_busy'), { code: 'research_busy', status: 429 });
       running = true;
       try {
-        let plan = await this.plan(feed, { maxJobs: onlyCaseIds ? 100 : maxJobs });
+        const selectedIds=onlyCaseIds ? new Set(onlyCaseIds) : null;
+        const planningFeed=selectedIds ? {...feed,cases:identifierGroups(feed.cases)
+          .filter(group=>group.some(item=>selectedIds.has(item.id))).flat()} : feed;
+        // Target the complete identifier group before applying the batch cap.
+        // Filtering a capped global plan would silently lose later case IDs.
+        let plan = await this.plan(planningFeed, { maxJobs });
         let jobs = plan.jobs;
         if (onlyCaseIds) jobs = jobs.filter(job => job.caseIds.some(id => onlyCaseIds.includes(id)));
         jobs = jobs.slice(0, maxJobs);

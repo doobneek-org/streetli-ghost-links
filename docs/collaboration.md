@@ -43,20 +43,20 @@ the private source adapter. Shared contract or dependency changes need a brief
 coordination note in the pull request. Every handoff states what works, what is
 pending, the relevant commit/PR, and which files the next agent should change.
 
-Timothy's next work is sponsor authentication/configuration checks and actual
-external-reference discovery. Ivan's next work is choosing owner-approved real
-cases, supplying an approved teammate-accessible feed, and writing prompt and
-evaluation templates. The local feed is already connected on Ivan's machine;
-the same localhost address does not connect another machine to it.
+The shared public feed is deployed and is the default on both machines. Tim's
+provider runtime is merged; sponsor keys and the Python environment remain local
+to each developer. The next integration is a live provider run against this feed,
+followed by the reviewer-controlled One action.
 
 ## Current working surface
 
 With Node.js 20.19+, run `npm test` and `npm run dev` from the repository root.
-Open `http://127.0.0.1:4317/`. No install is needed. The API reads fixtures or a
-configured approved private case feed; the private local bridge itself remains
+Open `http://127.0.0.1:4317/`. No install is needed. The API reads the shared public
+case feed by default, with no data token required. Explicit fixture mode remains
+available offline; the private local bridge itself remains
 in the owner's separate checkout. See [local dev setup](local-dev.md). The
-frontend and reporting routes work; automatic sponsor-powered research does not
-yet run. Extend this interface rather than rebuild a second frontend.
+frontend, reporting routes and bounded discovery worker are implemented.
+Provider execution needs the documented Python setup and server-only keys.
 
 The v1 envelope is `{ schemaVersion: 1, mode: "fixture" | "live", generatedAt, cases }`. Each case carries:
 

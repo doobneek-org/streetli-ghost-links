@@ -3,14 +3,15 @@
 // Ivan's select-case stage picks up to three to research, re-checked with
 // validateSelection. The model never grants research scope; the planner does.
 import { validateSelection } from '../../packages/contracts/research-output.mjs';
+import { normalizeDiscoveryIdentifier } from '../../packages/contracts/discovery-plan.mjs';
 
 // Mirrors the category board in apps/web/app.js.
 export const CATEGORIES = {
-  compromise: { detail: 'scam content, suspected takeover, repurposed or parked website', codes: ['website_scam_content', 'website_suspected_compromise', 'website_repurposed', 'website_domain_parked'] },
+  compromise: { detail: 'scam content, suspected takeover, repurposed or parked website', codes: ['website_scam_content', 'website_suspected_compromise', 'website_repurposed', 'website_domain_parked', 'scan_suspected_compromise', 'scan_parked_domain'] },
   website: { detail: 'website that no longer loads', codes: ['website_not_found'] },
   phone: { detail: 'phone number flagged disconnected', codes: ['phone_disconnected'] },
   email: { detail: 'email address or domain failing delivery checks', codes: ['email_invalid', 'email_domain_no_mx'] },
-  scan: { detail: 'former website link a past scan saw', codes: ['scan_historical_reference'] },
+  scan: { detail: 'automated website review leads, including former links', codes: ['scan_historical_reference'] },
   other: { detail: 'other invalid, risky or manually flagged contacts', codes: [] }
 };
 const RISK_ORDER = ['website_scam_content', 'website_suspected_compromise', 'website_repurposed', 'website_domain_parked'];
@@ -19,7 +20,7 @@ const MAX_CANDIDATES = 40;
 export function categoryOf(item) {
   const known = Object.entries(CATEGORIES).find(([, category]) => category.codes.includes(item.internal.reasonCode))?.[0];
   if (known) return known;
-  return item.internal.source === 'saved_scan' && item.identifier.kind === 'website' ? 'compromise' : 'other';
+  return item.internal.source === 'saved_scan' && item.identifier.kind === 'website' ? 'scan' : 'other';
 }
 
 // Bounds model output before code uses it as a filter.
@@ -73,18 +74,37 @@ export async function answerRequest(request, feed, { runStage, eligibleCaseIds =
 
 // Marks a found service's phone or website "at risk" when it matches an identifier
 // Streetli has flagged. Live data only: fixture identifiers are fictional.
-const hostOf = value => { try { return new URL(value).hostname.toLowerCase().replace(/^www\./, ''); } catch { return ''; } };
-const tenDigits = value => { const digits = String(value || '').replace(/\D/g, ''); return digits.length >= 10 ? digits.slice(-10) : ''; };
+const websiteIdentity = value => {
+  const identifier=normalizeDiscoveryIdentifier({kind:'website',value});
+  if (!identifier) return '';
+  const url=new URL(identifier.value);
+  // Common www aliases are comparable; paths and meaningful queries identify
+  // distinct resources on shared hosts and must never be discarded.
+  url.hostname=url.hostname.replace(/^www\./,'');
+  return url.href;
+};
+const phoneIdentity = value => {
+  if (typeof value !== 'string' || value.length>100 || /[\u0000-\u001f]/.test(value)) return '';
+  let number=value.trim();
+  const extension=number.match(/(?:;ext=|\bext(?:ension)?\.?\s*[:=]?\s*|(?:\bx|#)\s*)(\d{1,10})\s*$/i);
+  if (extension) number=number.slice(0,extension.index).trim();
+  if (!/^[+()\d\s.-]+$/.test(number) || /\+/.test(number.slice(1))) return '';
+  const digits=number.replace(/\D/g,'');
+  const international=number.startsWith('+') ? `+${digits}`
+    : digits.length===10 ? `+1${digits}` : digits.length===11 && digits.startsWith('1') ? `+${digits}` : '';
+  if (!international) return '';
+  return normalizeDiscoveryIdentifier({kind:'phone',value:`${international}${extension ? `;ext=${extension[1]}` : ''}`})?.value || '';
+};
 
 export function annotateRisk(services, feed) {
   if (feed?.mode !== 'live' || !Array.isArray(services)) return services;
-  const byHost = new Map(); const byPhone = new Map();
+  const byWebsite = new Map(); const byPhone = new Map();
   for (const item of feed.cases) {
-    if (item.identifier.kind === 'website' && hostOf(item.identifier.value)) byHost.set(hostOf(item.identifier.value), item);
-    if (item.identifier.kind === 'phone' && tenDigits(item.identifier.value)) byPhone.set(tenDigits(item.identifier.value), item);
+    if (item.identifier.kind === 'website' && websiteIdentity(item.identifier.value)) byWebsite.set(websiteIdentity(item.identifier.value), item);
+    if (item.identifier.kind === 'phone' && phoneIdentity(item.identifier.value)) byPhone.set(phoneIdentity(item.identifier.value), item);
   }
   return services.map(service => {
-    const matches = { website: byHost.get(hostOf(service.website)), phone: byPhone.get(tenDigits(service.phone)) };
+    const matches = { website: byWebsite.get(websiteIdentity(service.website)), phone: byPhone.get(phoneIdentity(service.phone)) };
     if (!matches.website && !matches.phone) return service;
     const checks = (service.checks || []).map(check => {
       const item = matches[check.field];

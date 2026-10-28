@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { get } from 'node:http';
 import { createFixtureServer, createLiveSource } from '../apps/agent/fixture-server.mjs';
+import { PUBLIC_CASES_URL } from '../packages/contracts/case-source.mjs';
 
 const fixture = JSON.parse(await readFile(new URL('../fixtures/cases.demo.json', import.meta.url), 'utf8'));
 
@@ -15,7 +16,8 @@ test('fixture API runs offline, identifies itself, and rejects writes', async ()
     const cases = await fetch(`${base}/api/cases`);
     assert.equal(cases.status, 200); assert.equal(cases.headers.get('access-control-allow-origin'), null);
     assert.equal((await cases.json()).mode, 'fixture');
-    const health = await (await fetch(`${base}/health`)).json(); assert.equal(health.liveResearchImplemented, false);
+    const health = await (await fetch(`${base}/health`)).json(); assert.equal(health.liveResearchImplemented, true);
+    assert.equal(typeof health.researchRuntimeAvailable, 'boolean');
     assert.equal((await fetch(`${base}/api/cases`, {method: 'POST'})).status, 405);
     assert.equal((await fetch(`${base}/not-a-route`)).status, 404);
     assert.equal((await fetch(`${base}/api/cases`, {headers: {Origin: 'https://unrelated.example'}})).status, 403);
@@ -66,6 +68,18 @@ test('source requires a credential-free configured URL, token and bounded reques
     assert.throws(() => createLiveSource({sourceUrl: 'http://127.0.0.1:4318/api/cases', token: 'fake-test-token-with-enough-length', timeoutMs}), /config/);
   }
   assert.doesNotThrow(() => createLiveSource({sourceUrl: 'http://127.0.0.1:4318/api/cases', token: 'fake-test-token-with-enough-length', timeoutMs: 300000}));
+});
+
+test('only the pinned public projection works without a token and never receives a leftover private token', async () => {
+  const calls = [];
+  const source = createLiveSource({ sourceUrl: PUBLIC_CASES_URL, token: 'old-private-bridge-token-do-not-forward',
+    fetchImpl: async (url, options) => { calls.push({url:String(url), options}); return new Response(JSON.stringify({...fixture,mode:'live'})); } });
+  await source();
+  assert.equal(calls[0].url, PUBLIC_CASES_URL);
+  assert.deepEqual(calls[0].options.headers, {});
+  assert.doesNotThrow(()=>createLiveSource({sourceUrl:PUBLIC_CASES_URL}));
+  assert.throws(()=>createLiveSource({sourceUrl:'https://unrelated.example/cases'}),/config/);
+  assert.throws(()=>createLiveSource({sourceUrl:`${PUBLIC_CASES_URL}/other`}),/config/);
 });
 
 test('reporting endpoint uses an existing case, rejects arbitrary targets, and never reports fixtures', async () => {

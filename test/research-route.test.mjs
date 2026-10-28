@@ -4,7 +4,7 @@ import { once, EventEmitter } from 'node:events';
 import { createFixtureServer } from '../apps/agent/fixture-server.mjs';
 import { createResearchRunner, manualTestCase } from '../apps/agent/research-route.mjs';
 import { createDiscoveryRunner } from '../apps/agent/discovery-runner.mjs';
-import { applyPlan, cleanPlan } from '../apps/agent/ask.mjs';
+import { applyPlan, cleanPlan, categoryOf } from '../apps/agent/ask.mjs';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -32,6 +32,15 @@ const liveCase = (id, reviewState) => ({
   replacement: null, externalReferences: [], reviewState, location: null
 });
 const liveFeed = { schemaVersion: 2, mode: 'live', generatedAt: '2026-10-28T10:00:00Z', coverage: { scope: 'retained_records_only', sourceCounts: { website: 0, phone: 2, email: 0 }, returned: 2, omitted: 0 }, cases: [liveCase('approved-1', 'approved_for_research'), liveCase('pending-1', 'review_required')] };
+
+test('generic automated review flags cannot become compromise allegations during request planning', () => {
+  const scan = code => ({...liveCase('scan','review_required'),identifier:{kind:'website',value:'https://community.example.org/'},internal:{...liveCase('scan','review_required').internal,source:'saved_scan',reasonCode:code}});
+  for (const code of ['scan_unverified_content_review','scan_program_closure_review','scan_organization_mismatch','scan_historical_reference']) {
+    assert.equal(categoryOf(scan(code)),'scan');
+    assert.equal(applyPlan([scan(code)],{serviceTerms:[],categories:['compromise'],kinds:[],locality:null}).length,0);
+  }
+  assert.equal(categoryOf(scan('scan_suspected_compromise')),'compromise');
+});
 
 async function withServer(options, run) {
   const server = await createFixtureServer({ discovery: (await fakeDiscovery(uncertainOutcome)).discovery, ...options });
@@ -91,6 +100,40 @@ test('discovery discards outputs that fail the evidence gate and respects the ca
   assert.match(first.findings[0].gate, /^rejected:unbound_quote/); assert.equal(first.findings[0].evidence.length, 0);
   const second = await discovery.runDue(feed, { maxJobs: 3 });
   assert.equal(second.plan.ran, 0); assert.equal(calls.length, 1);
+});
+
+test('a selected case after the global 100-job cap still runs with its full identifier group', async () => {
+  const cases=Array.from({length:130},(_,index)=>({...liveCase(`case-${index}`,'review_required'),
+    identifier:{kind:'website',value:`https://site-${String(index).padStart(3,'0')}.org/`}}));
+  cases.push({...cases[129],id:'shared-branch',organization:{name:'Example Pantry',locality:'Queens'}});
+  const feed={...structuredClone(liveFeed),cases};
+  const {calls,discovery}=await fakeDiscovery(uncertainOutcome);
+  assert.ok(!(await discovery.plan(feed,{maxJobs:100})).jobs.some(job=>job.caseIds.includes('case-129')));
+  const result=await discovery.runDue(feed,{maxJobs:1,onlyCaseIds:['case-129']});
+  assert.equal(result.plan.ran,1);
+  assert.equal(calls.length,1);
+  assert.deepEqual(calls[0].discoveryJob.caseIds,['case-129','shared-branch']);
+  const findings=await discovery.findings(feed);
+  assert.equal(findings['case-129'].gate,'passed');
+  assert.equal(findings['shared-branch'].binding,findings['case-129'].binding);
+});
+
+test('stored findings expire after 24 hours and invalidate when source association changes', async () => {
+  const dataDir=`${await mkdtemp(join(tmpdir(),'ghost-cache-'))}/`;
+  let clock=new Date('2026-10-28T20:00:00Z');
+  const outcome=payload=>({...uncertainOutcome(payload),checkedAt:clock.toISOString(),documents:[{
+    id:'doc-1',url:'https://directory.org/pantry',text:'Example Pantry call +12125550123 today',status:'fetched',observedAt:clock.toISOString()}]});
+  const discovery=createDiscoveryRunner({dataDir,run:outcome,available:()=>true,now:()=>clock});
+  const feed=structuredClone(liveFeed);
+  await discovery.runDue(feed,{maxJobs:1});
+  assert.equal(Object.keys(await discovery.findings(feed)).length,2);
+  const changed=structuredClone(feed); changed.cases[0].organization.name='Another Provider';
+  assert.deepEqual(await discovery.findings(changed),{});
+  const merelyRefreshed={...feed,generatedAt:'2026-10-28T20:05:00Z'};
+  assert.equal(Object.keys(await discovery.findings(merelyRefreshed)).length,2);
+  clock=new Date('2026-10-29T20:00:00Z');
+  assert.deepEqual(await discovery.findings(feed),{});
+  assert.deepEqual(await discovery.findings({...feed,mode:'fixture'}),{});
 });
 
 test('request planning applies the model plan in code and bounds it', () => {
@@ -165,4 +208,23 @@ test('leaderboard ranks reviewers by points from recorded decisions', async () =
   assert.deepEqual(board.map(entry => [entry.name, entry.points]), [['Vlad', 20], ['Mina', 3], ['Anonymous', 1]]);
   assert.equal(parseDecision({ caseId: 'x', decision: 'resolved', by: '<script>' }), null);
   assert.equal(parseDecision({ caseId: 'x', decision: 'resolved', by: 'Van Helsing' }).by, 'Van Helsing');
+});
+
+test('service risk matching preserves shared-host paths, meaningful queries, country codes and phone extensions', async () => {
+  const {annotateRisk}=await import('../apps/agent/ask.mjs');
+  const website={...liveCase('website','review_required'),identifier:{kind:'website',value:'https://www.community.wordpress.com/old-pantry?branch=one'}};
+  const phone={...liveCase('phone','review_required'),identifier:{kind:'phone',value:'+12125550123;ext=12'}};
+  const feed={...liveFeed,cases:[website,phone]};
+  const service=(site,number)=>({website:site,phone:number,checks:[{field:'website',state:'listed'},{field:'phone',state:'listed'}]});
+  const different=annotateRisk([service('https://community.wordpress.com/new-pantry?branch=one','+442125550123;ext=12'),
+    service('https://community.wordpress.com/old-pantry?branch=two','+12125550123;ext=99'),
+    service('https://community.wordpress.com/old-pantry?branch=one','+12125550123')],feed);
+  assert.equal(different[0].checks[0].state,'listed');
+  assert.equal(different[0].checks[1].state,'listed');
+  assert.equal(different[1].checks[0].state,'listed');
+  assert.equal(different[1].checks[1].state,'listed');
+  assert.equal(different[2].checks[1].state,'listed');
+  const exact=annotateRisk([service('https://community.wordpress.com/old-pantry?branch=one','(212) 555-0123 ext. 12')],feed)[0];
+  assert.equal(exact.checks[0].state,'at_risk');
+  assert.equal(exact.checks[1].state,'at_risk');
 });
