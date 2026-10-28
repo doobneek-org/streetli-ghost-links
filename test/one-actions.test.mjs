@@ -54,3 +54,21 @@ test('message builders stay bounded and plain', () => {
   assert.match(raw, /^To: me@example.org/); assert.match(raw, /Content-Type: text\/plain/);
   assert.equal(oneStatus(config, env).sheets, true);
 });
+
+test('demo mode returns saved results labeled as saved, and misses cleanly', async () => {
+  const { mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { pathToFileURL } = await import('node:url');
+  const cacheFile = pathToFileURL(join(await mkdtemp(join(tmpdir(), 'gl-cache-')), 'route-cache.json'));
+  const python = async payload => payload.stage === 'route-request' ? { output: { route: 'find_services', reason: 'test' } } : { kind: 'find', stopped: null, services: [{ name: 'Pantry', status: 'no_notice_found', checks: [] }], news: [] };
+  const server = await createFixtureServer({ python, one: { cacheFile } });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    assert.equal((await fetch(`${base}/api/route/cached`, { method: 'POST', body: '{"request":"food pantry in Harlem"}' })).status, 404);
+    await (await fetch(`${base}/api/route`, { method: 'POST', body: '{"request":"Food pantry in   Harlem"}' })).text();
+    const saved = await (await fetch(`${base}/api/route/cached`, { method: 'POST', body: '{"request":"food pantry in harlem"}' })).json();
+    assert.equal(saved.cached, true); assert.ok(saved.savedAt); assert.equal(saved.services[0].name, 'Pantry');
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});

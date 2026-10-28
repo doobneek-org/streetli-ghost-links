@@ -7,6 +7,7 @@ import { PUBLIC_CASES_URL } from '../../packages/contracts/case-source.mjs';
 import { createResearchRunner, manualTestCase } from './research-route.mjs';
 import { createReviewStore, leaderboard, parseDecision } from './review-actions.mjs';
 import { createDiscoveryRunner, runPython } from './discovery-runner.mjs';
+import { mkdir as mkdirCache, readFile as readCache, writeFile as writeCache } from 'node:fs/promises';
 import { eventRows, ghostReportEmail, gmailRaw, loadOneConfig, oneStatus, runOneAction, serviceListEmail, teamTicketText, validEmail } from './one-actions.mjs';
 
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
@@ -106,6 +107,19 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
   const oneFetch = one.fetchImpl || fetch;
   const oneEnv = one.env || process.env;
   let lastServiceResult = null;
+  // Demo mode: the last successful result per request, saved under ignored data/.
+  const cacheFile = one.cacheFile || new URL('../../data/route-cache.json', import.meta.url);
+  const cacheKey = text => text.toLowerCase().replace(/\s+/g, ' ').trim();
+  const readRouteCache = async () => { try { return JSON.parse(await readCache(cacheFile, 'utf8')); } catch { return {}; } };
+  const saveRouteCache = async (text, result) => {
+    try {
+      const cache = await readRouteCache();
+      cache[cacheKey(text)] = { savedAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), result };
+      const entries = Object.entries(cache).sort((a, b) => String(b[1].savedAt).localeCompare(String(a[1].savedAt))).slice(0, 25);
+      await mkdirCache(new URL('.', cacheFile), { recursive: true });
+      await writeCache(cacheFile, JSON.stringify(Object.fromEntries(entries)), { mode: 0o600 });
+    } catch { /* the cache is optional */ }
+  };
   let lastOneAction = 0;
   const fixture = validateCaseFeed(JSON.parse(await readFile(new URL('../../fixtures/cases.demo.json', import.meta.url), 'utf8')));
   const mode = source || sourceUrl ? 'live' : 'fixture';
@@ -203,6 +217,15 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
         } catch { write({ type: 'error', message: 'The request failed. Check the server console and provider keys.' }); }
         return response.end();
       }
+      // Demo mode: return the saved result for this request, clearly labeled as saved.
+      if (path === '/api/route/cached' && request.method === 'POST') {
+        const body = await readJsonBody(request);
+        const text = typeof body?.request === 'string' ? body.request.trim() : '';
+        const hit = text ? (await readRouteCache())[cacheKey(text)] : null;
+        if (!hit) return send(404, { error: 'no_saved_result' });
+        if (hit.result.kind === 'event' || hit.result.kind === 'find') lastServiceResult = hit.result;
+        return send(200, { ...hit.result, cached: true, savedAt: hit.savedAt });
+      }
       // One box: a Parasail router (route-request stage) decides which flow handles the message.
       if (path === '/api/route' && request.method === 'POST') {
         const body = await readJsonBody(request);
@@ -223,13 +246,14 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
             const eligible = lastFeed.mode === 'live' ? (await discovery.plan(lastFeed, { maxJobs: 100 })).eligibleCaseIds : [];
             const { answerRequest } = await import('./ask.mjs');
             const result = await answerRequest(text, lastFeed, { runStage: (stage, input) => python({ stage, input }), eligibleCaseIds: eligible, onEvent });
+            if (!result.error) await saveRouteCache(text, { kind: 'ask', route, ...result });
             write(result.error ? { type: 'error', message: 'The request could not be interpreted. Try rephrasing it.' } : { type: 'result', kind: 'ask', route, ...result });
           } else if (route === 'event' || route === 'find_services') {
             // Only real provider names may go to live search; fictional fixtures stay local.
             const cases = lastFeed.mode === 'live' ? lastFeed.cases.slice(0, 2000).map(item => ({ id: item.id, name: item.organization.name, locality: item.organization.locality })) : [];
             const result = await python({ eventText: text, cases, findOnly: route === 'find_services' }, { onEvent });
             const { annotateRisk } = await import('./ask.mjs');
-            if (result.kind) lastServiceResult = { ...result, services: annotateRisk(result.services, lastFeed) };
+            if (result.kind) { lastServiceResult = { ...result, services: annotateRisk(result.services, lastFeed) }; if (!result.stopped) await saveRouteCache(text, { route, ...lastServiceResult }); }
             write(result.kind ? { type: 'result', route, ...lastServiceResult } : { type: 'error', message: 'The service search failed. Check the server console and provider keys.' });
           } else {
             write({ type: 'result', kind: 'unsupported', route, reason: routed.output?.reason || '' });

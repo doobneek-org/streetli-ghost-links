@@ -906,8 +906,24 @@
     const text = elements.input.value.trim();
     if (text.length < 3) { query = elements.input.value; visibleCount = 30; renderList(); return; }
     query = ''; askFilter = null; visibleCount = 30; renderList();
-    runResearch('/api/route', { request: text }, $('route-output'), $('search-submit'), renderRouted);
+    if ($('demo-mode')?.checked) showSaved(text); else runResearch('/api/route', { request: text }, $('route-output'), $('search-submit'), renderRouted);
   });
+  // Demo mode: saved results appear instantly and are always labeled as saved, not live.
+  async function showSaved(text) {
+    const output = $('route-output');
+    try {
+      const response = await fetch('/api/route/cached', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ request: text }) });
+      if (!response.ok) throw new Error('miss');
+      const result = await response.json();
+      const banner = make('p', 'demo-banner', `Saved result from ${checkedTime(result.savedAt)}. Not a live check.`);
+      const live = make('button', 'secondary-button', 'Run live now');
+      live.type = 'button';
+      live.addEventListener('click', () => runResearch('/api/route', { request: text }, output, $('search-submit'), renderRouted));
+      banner.append(document.createTextNode(' '), live);
+      output.replaceChildren(banner, renderRouted(result));
+    } catch { runResearch('/api/route', { request: text }, output, $('search-submit'), renderRouted); }
+  }
+  try { const demo = $('demo-mode'); if (demo) { demo.checked = localStorage.getItem('ghost-links-demo') === 'on'; demo.addEventListener('change', () => { try { localStorage.setItem('ghost-links-demo', demo.checked ? 'on' : 'off'); } catch {} }); } } catch { /* optional */ }
   document.querySelectorAll('[data-ask]').forEach(button => button.addEventListener('click', () => {
     elements.input.value = button.dataset.ask;
     elements.form.requestSubmit();
