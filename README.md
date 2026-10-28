@@ -17,6 +17,8 @@ npm start
 
 The fixture API is available at <http://127.0.0.1:4317/api/cases>. `npm start` starts the local fixture server; it does not start a completed dashboard or query Streetli production. `npm test` checks case validation and server behavior.
 
+The starter reads `PORT` from the process environment; it does not load `.env` automatically. `.env.example` documents planned integration settings. Add explicit server-side environment loading when implementing the integrations.
+
 ## Project layout
 
 | Path | Purpose |
