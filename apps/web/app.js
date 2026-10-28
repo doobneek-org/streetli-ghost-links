@@ -53,6 +53,8 @@
   let decisions = {};
   let findings = {};
   let eligibleIds = new Set();
+  let researchBackendAvailable = null;
+  const researchUnavailableNotice = 'Live web research is not connected yet. You can browse flagged records and view reporting steps.';
   let askFilter = null;
   const verdictLabels = { stale_reference: ['Still listed online', 'found'], historical_mention: ['Old mention only', 'clear'], different_entity: ['Different organization', 'clear'], not_present: ['Not found on checked pages', 'clear'], uncertain: ['Inconclusive', 'unknown'], error: ['Check failed', 'unknown'] };
 
@@ -78,8 +80,8 @@
     const toggle = make('button', 'secondary-button hide-decided', hideDecided ? 'Show decided records' : 'Hide decided records');
     toggle.type = 'button'; toggle.setAttribute('aria-pressed', String(hideDecided));
     toggle.addEventListener('click', () => { hideDecided = !hideDecided; visibleCount = 30; renderList(); });
-    const discover = make('button', 'secondary-button', feed?.mode === 'live' ? 'Run discovery (next 3 due)' : 'Discovery needs live data');
-    discover.type = 'button'; discover.disabled = feed?.mode !== 'live';
+    const discover = make('button', 'secondary-button', researchBackendAvailable === false ? 'Live discovery unavailable' : feed?.mode === 'live' ? 'Run discovery (next 3 due)' : 'Discovery needs live data');
+    discover.type = 'button'; discover.disabled = feed?.mode !== 'live' || researchBackendAvailable === false;
     discover.addEventListener('click', () => runResearch('/api/discovery/run', { maxJobs: 3 }, $('discovery-output'), discover, renderDiscoveryResult));
     board.replaceChildren(...cards, toggle, discover);
   }
@@ -89,6 +91,7 @@
       const response = await fetch('/api/review-actions', { cache: 'no-store', headers: { Accept: 'application/json' } });
       const payload = await response.json();
       decisions = response.ok && payload?.mode === feed?.mode && payload.actions && typeof payload.actions === 'object' ? payload.actions : {};
+      if (response.ok && typeof payload?.researchBackendAvailable === 'boolean') researchBackendAvailable = payload.researchBackendAvailable;
     } catch { decisions = {}; }
     await loadFindings(false);
     renderList();
@@ -99,7 +102,11 @@
     try {
       const response = await fetch('/api/discovery/findings', { cache: 'no-store', headers: { Accept: 'application/json' } });
       const payload = await response.json();
-      if (response.ok && payload?.mode === 'live') { findings = payload.findings || {}; eligibleIds = new Set(payload.eligibleCaseIds || []); }
+      if (response.ok && payload?.mode === 'live') {
+        findings = payload.findings || {}; eligibleIds = new Set(payload.eligibleCaseIds || []);
+        // Local runtime responses omit this field and retain existing behavior.
+        researchBackendAvailable = typeof payload.researchBackendAvailable === 'boolean' ? payload.researchBackendAvailable : null;
+      }
     } catch { /* keep previous findings */ }
     if (render) renderList();
   }
@@ -112,11 +119,13 @@
       ? `${decisionLabels[current.decision] || current.decision} · ${checkedTime(current.at)}${current.note ? ` · “${current.note}”` : ''}`
       : 'Open. Record what you found; this does not edit Streetli or mark a correction verified.'));
     const note = make('input', 'decision-note');
+    note.disabled = researchBackendAvailable === false;
     note.type = 'text'; note.maxLength = 300; note.placeholder = 'Optional note, e.g. “Directory fixed after edit request”';
     note.setAttribute('aria-label', 'Decision note');
     const buttons = make('div', 'decision-buttons');
     const status = make('p', 'research-note');
     const choose = async decision => {
+      if (researchBackendAvailable === false) { status.textContent = 'Reviewer decisions are not connected yet.'; return; }
       buttons.querySelectorAll('button').forEach(button => { button.disabled = true; });
       try {
         const response = await fetch('/api/review-actions', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ caseId: item.id, decision, note: note.value || '' }) });
@@ -129,13 +138,26 @@
     const options = current ? [['open', 'Reopen']] : [['resolved', 'Mark resolved'], ['not_an_issue', 'Not an issue'], ['follow_up', 'Needs follow-up']];
     for (const [decision, label] of options) {
       const button = make('button', decision === 'resolved' ? 'primary-button' : 'secondary-button', label);
-      button.type = 'button';
+      button.type = 'button'; button.disabled = researchBackendAvailable === false;
       button.addEventListener('click', () => choose(decision));
       buttons.append(button);
     }
+    if (researchBackendAvailable === false) section.append(make('p', 'research-note', 'Reviewer decisions are not connected on this deployment yet.'));
     if (!current) section.append(note);
     section.append(buttons, status);
     return section;
+  }
+
+  function renderResearchCapability() {
+    const unavailable = researchBackendAvailable === false;
+    const notice = $('research-capability-note');
+    if (notice) { notice.hidden = !unavailable; notice.textContent = unavailable ? researchUnavailableNotice : ''; }
+    const heroSubmit = $('search-submit');
+    if (heroSubmit) heroSubmit.textContent = unavailable ? 'Filter records' : 'Ask ↗';
+    for (const id of ['ask-submit', 'event-submit', 'pipeline-submit']) {
+      const button = $(id); if (button) button.disabled = unavailable;
+    }
+    document.querySelectorAll('[data-ask]').forEach(button => { button.disabled = unavailable; });
   }
 
   const make = (tag, className, text) => {
@@ -216,6 +238,7 @@
 
   function renderList() {
     renderBoard();
+    renderResearchCapability();
     const queryMatches = filteredByQuery();
     const matchesState = (item, target) => target === 'all' || (target === 'removed' ? ['removed', 'replaced'].includes(item.internal.state) : item.internal.state === 'flagged');
     const stateMatches = queryMatches.filter(item => matchesState(item, activeState));
@@ -368,9 +391,10 @@
     const approved = item.reviewState === 'approved_for_research' || eligibleIds.has(item.id);
     const button = make('button', 'primary-button research-button', findings[item.id] ? 'Research again' : 'Research the web');
     button.type = 'button';
-    button.disabled = fixture || !approved;
+    button.disabled = fixture || !approved || researchBackendAvailable === false;
     const note = make('p', 'research-note', fixture
       ? 'Live research is off for fictional fixtures. Use the pipeline test below the queue to watch a real run.'
+      : researchBackendAvailable === false ? researchUnavailableNotice
       : !approved ? 'This record is outside the automatic discovery scope (for example, the provider identity is unknown).'
       : 'Runs this record\'s discovery job: You.com search and fetch, then a CrewAI agent on Parasail with the verify-reference prompt. Results within 24 hours come from cache. Nothing is sent.');
     const output = make('div', 'research-output');
@@ -386,6 +410,7 @@
   }
 
   async function runResearch(url, body, output, button, render = renderResearchResult) {
+    if (researchBackendAvailable === false) { output.replaceChildren(make('p', 'research-note', researchUnavailableNotice)); return; }
     const label = button.textContent;
     button.disabled = true; button.textContent = 'Researching…';
     const live = make('p', 'research-live', 'Starting research…');
@@ -418,7 +443,7 @@
         }
       } else (await response.text()).split('\n').forEach(handle);
     } catch (error) { failure = error.message || 'Research failed.'; }
-    finally { button.disabled = false; button.textContent = label; }
+    finally { button.disabled = researchBackendAvailable === false; button.textContent = label; }
     if (result) {
       live.textContent = result.kind === 'event' || result.kind === 'find'
         ? (result.stopped ? 'Service search stopped.' : 'Done. Call ahead before sending anyone.')
@@ -743,6 +768,11 @@
   elements.form.addEventListener('submit', event => {
     event.preventDefault();
     const text = elements.input.value.trim();
+    if (researchBackendAvailable === false) {
+      query = elements.input.value; askFilter = null; visibleCount = 30; renderList();
+      $('route-output').replaceChildren(make('p', 'research-note', researchUnavailableNotice));
+      return;
+    }
     if (text.length < 3) { query = elements.input.value; visibleCount = 30; renderList(); return; }
     query = ''; askFilter = null; visibleCount = 30; renderList();
     runResearch('/api/route', { request: text }, $('route-output'), $('search-submit'), renderRouted);

@@ -1,0 +1,128 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { createCloudflareWorker } from '../apps/cloudflare/worker.mjs';
+import { PUBLIC_CASES_URL } from '../packages/contracts/case-source.mjs';
+
+const fixture = JSON.parse(await readFile(new URL('../fixtures/cases.demo.json', import.meta.url), 'utf8'));
+const live = () => {
+  const feed = structuredClone(fixture); feed.mode = 'live';
+  feed.cases.forEach((item, index) => { item.identifier.value = `https://former${index}.example.org/`; item.organization.name = `Community Pantry ${index}`; });
+  return feed;
+};
+const request = (path, options = {}) => new Request(`https://you.doobneek.org${path}`, options);
+const json = value => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } });
+const BACKEND_TOKEN = 'server-secret-token-with-at-least-32-characters';
+const MAINTAINER_TOKEN = 'maintainer-token-with-at-least-32-characters';
+
+test('static assets retain the frontend and receive edge security headers', async () => {
+  const worker = createCloudflareWorker({ fetchImpl: async () => { throw new Error('No API call expected'); } });
+  const response = await worker.fetch(request('/'), { ASSETS: { fetch: async input => new Response(`Asset ${new URL(input.url).pathname}`, { headers: { 'Content-Type': 'text/html' } }) } });
+  assert.equal(await response.text(), 'Asset /');
+  assert.equal(response.headers.get('X-Content-Type-Options'), 'nosniff');
+  assert.match(response.headers.get('Content-Security-Policy'), /connect-src 'self'/);
+});
+
+test('live feed requests share one import, cache, refresh and never forward caller credentials', async () => {
+  let calls = 0, clock = 100000;
+  const worker = createCloudflareWorker({ now: () => clock, fetchImpl: async (url, options) => {
+    calls++; assert.equal(String(url), PUBLIC_CASES_URL); assert.equal(options.redirect, 'manual');
+    assert.deepEqual(options.headers, { Accept: 'application/json' });
+    await new Promise(resolve => setTimeout(resolve, 5)); return json(live());
+  } });
+  const [first, second] = await Promise.all([worker.fetch(request('/api/cases', { headers: { Authorization: 'do-not-forward', Cookie: 'private' } })), worker.fetch(request('/api/cases'))]);
+  assert.equal((await first.json()).mode, 'live'); assert.equal((await second.json()).cases.length, live().cases.length);
+  assert.equal(first.headers.get('Cache-Control'), 'no-store'); assert.equal(calls, 1);
+  await worker.fetch(request('/api/cases')); assert.equal(calls, 1);
+  assert.equal((await worker.fetch(request('/api/refresh', { method: 'POST' }))).status, 200); assert.equal(calls, 2);
+  assert.equal((await worker.fetch(request('/api/refresh', { method: 'POST' }))).status, 429);
+  clock += 61000; await worker.fetch(request('/api/cases')); assert.equal(calls, 3);
+});
+
+test('source failures and invalid or oversized feeds remain explicit rather than fixtures', async () => {
+  for (const fetchImpl of [async () => new Response('PRIVATE', { status: 500 }), async () => json(fixture),
+    async () => new Response('{}', { headers: { 'content-length': String(17 * 1024 * 1024) } }), async () => { throw new Error('PRIVATE'); }]) {
+    const response = await createCloudflareWorker({ fetchImpl }).fetch(request('/api/cases'));
+    assert.equal(response.status, 503); assert.doesNotMatch(await response.text(), /PRIVATE|fictional/);
+  }
+});
+
+test('reporting is restricted to actual cases and never accepts arbitrary URLs', async () => {
+  let selected = null;
+  const worker = createCloudflareWorker({ fetchImpl: async () => json(live()), reporting: async item => { selected = item.id; return { caseId: item.id, routes: [] }; } });
+  assert.equal((await worker.fetch(request(`/api/reporting?caseId=${live().cases[0].id}`))).status, 200);
+  assert.equal(selected, live().cases[0].id);
+  assert.equal((await worker.fetch(request('/api/reporting?caseId=missing'))).status, 404);
+  assert.equal((await worker.fetch(request('/api/reporting?url=https://arbitrary.org'))).status, 400);
+  assert.equal((await worker.fetch(request(`/api/reporting?caseId=${selected}&caseId=${selected}`))).status, 400);
+});
+
+test('missing Python backend is truthful and never fabricates research or successful saved decisions', async () => {
+  const worker = createCloudflareWorker({ fetchImpl: async () => json(live()) });
+  const health = await (await worker.fetch(request('/health'))).json();
+  assert.equal(health.liveResearchImplemented, false); assert.equal(health.researchBackendConfigured, false);
+  const findings = await (await worker.fetch(request('/api/discovery/findings'))).json();
+  assert.deepEqual(findings.findings, {}); assert.equal(findings.eligibleCaseIds.length, live().cases.length);
+  assert.equal(findings.researchBackendAvailable, false);
+  const reviews = await (await worker.fetch(request('/api/review-actions'))).json();
+  assert.deepEqual(reviews.actions, {}); assert.equal(reviews.researchBackendAvailable, false);
+  for (const path of ['/api/discovery/run', `/api/research?caseId=${live().cases[0].id}`, '/api/research/test', '/api/ask', '/api/route', '/api/event-check', '/api/review-actions']) {
+    const response = await worker.fetch(request(path, { method: 'POST', body: '{}' }));
+    assert.equal(response.status, 503); assert.equal((await response.json()).error, 'research_backend_unavailable');
+  }
+});
+
+test('backend proxy uses server credentials only and requires a separately checked maintainer token for paid mutations', async () => {
+  const calls = [];
+  const environment = { RESEARCH_BACKEND_URL: 'https://research.example.org/base/', RESEARCH_BACKEND_TOKEN: BACKEND_TOKEN, MAINTAINER_TOKEN };
+  const worker = createCloudflareWorker({ fetchImpl: async (url, options) => { calls.push({ url: String(url), options }); return new Response('{"type":"result","findings":[]}\n', { headers: { 'Content-Type': 'application/x-ndjson', 'Set-Cookie': 'private' } }); } });
+  assert.equal((await worker.fetch(request('/api/discovery/run', { method: 'POST', headers: { 'CF-Access-Jwt-Assertion': 'unverified-jwt' }, body: '{}' }), environment)).status, 401);
+  assert.equal(calls.length, 0);
+  const response = await worker.fetch(request('/api/discovery/run', { method: 'POST', headers: { Authorization: `Bearer ${MAINTAINER_TOKEN}`, Cookie: 'do-not-forward', Origin: 'https://you.doobneek.org', Accept: 'application/x-ndjson' }, body: '{"maxJobs":1}' }), environment);
+  assert.equal(response.status, 200); assert.match(await response.text(), /"type":"result"/);
+  assert.equal(calls[0].url, 'https://research.example.org/base/api/discovery/run');
+  assert.equal(calls[0].options.headers.Authorization, `Bearer ${BACKEND_TOKEN}`);
+  assert.ok(!Object.hasOwn(calls[0].options.headers, 'Cookie'));
+  assert.equal(calls[0].options.redirect, 'manual');
+  assert.equal(response.headers.get('Set-Cookie'), null); assert.equal(response.headers.get('Cache-Control'), 'no-store');
+});
+
+test('unsafe backend configuration, cross-site mutations and unknown proxy paths are rejected', async () => {
+  let calls = 0;
+  const worker = createCloudflareWorker({ fetchImpl: async () => { calls++; return json({}); } });
+  for (const base of ['http://research.org', 'https://user:pass@research.org', 'https://research.org/?token=private', 'https://research.org/#private']) {
+    const response = await worker.fetch(request('/health'), { RESEARCH_BACKEND_URL: base, RESEARCH_BACKEND_TOKEN: BACKEND_TOKEN });
+    assert.equal(response.status, 503); assert.equal((await response.json()).error, 'research_backend_configuration_invalid');
+  }
+  assert.equal((await worker.fetch(request('/api/refresh', { method: 'POST', headers: { Origin: 'https://unrelated.org' } }))).status, 403);
+  assert.equal((await worker.fetch(request('/api/route', { method: 'POST', headers: { 'Sec-Fetch-Site': 'cross-site' }, body: '{}' }))).status, 403);
+  assert.equal((await worker.fetch(request('/api/arbitrary'))).status, 404);
+  assert.equal((await worker.fetch(request('/api/cases', { method: 'POST' }))).status, 405);
+  assert.equal((await worker.fetch(request('/api/discovery/findings?url=https://arbitrary.org'))).status, 400);
+  assert.equal(calls, 0);
+});
+
+test('backend failures sanitize private diagnostics and oversized mutation bodies never reach it', async () => {
+  const environment = { RESEARCH_BACKEND_URL: 'https://research.example.org', RESEARCH_BACKEND_TOKEN: BACKEND_TOKEN, MAINTAINER_TOKEN };
+  let calls = 0;
+  const worker = createCloudflareWorker({ fetchImpl: async () => { calls++; return new Response('PRIVATE', { status: 500 }); } });
+  const failure = await worker.fetch(request('/api/discovery/findings'), environment);
+  assert.equal(failure.status, 503); assert.doesNotMatch(await failure.text(), /PRIVATE/);
+  const tooLarge = await worker.fetch(request('/api/discovery/run', { method: 'POST', headers: { Authorization: `Bearer ${MAINTAINER_TOKEN}` }, body: 'x'.repeat(5000) }), environment);
+  assert.equal(tooLarge.status, 413); assert.equal(calls, 1);
+});
+
+// The Workers runtime only accepts 'follow' or 'manual'; 'error' throws a TypeError that the
+// worker's catch would report as an unreachable source, so assert the mode and the 3xx refusal.
+test('outbound fetches use a runtime-valid redirect mode and refuse redirected sources', async () => {
+  const modes = [];
+  const worker = createCloudflareWorker({ fetchImpl: async (url, options) => {
+    modes.push(options.redirect);
+    return new Response('', { status: 302, headers: { Location: 'https://elsewhere.example.org/' } });
+  } });
+  const response = await worker.fetch(request('/api/cases'));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, 'case_source_unavailable');
+  assert.ok(modes.length > 0);
+  for (const mode of modes) assert.ok(['follow', 'manual'].includes(mode), `invalid redirect mode: ${mode}`);
+});

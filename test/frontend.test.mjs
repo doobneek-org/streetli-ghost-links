@@ -76,12 +76,13 @@ function makeCase(id, kind, state = 'removed', name = `Example ${id}`) {
 }
 const makeFeed = cases => ({ schemaVersion: 2, mode: 'live', generatedAt: '2026-10-28T10:00:00Z', coverage: { scope: 'retained_records_only', returned: cases.length, omitted: 0 }, cases });
 
-async function startApp(feed, { reporting, failInitial = false, failRefresh = false } = {}) {
+async function startApp(feed, { reporting, discovery, failInitial = false, failRefresh = false } = {}) {
   const document = documentFromHtml(html); const requests = [];
   const fetch = async (url, options = {}) => {
     requests.push({ url, method: options.method || 'GET' });
     if ((url === '/api/cases' && failInitial) || (url === '/api/refresh' && failRefresh)) return { ok: false, status: 503, json: async () => ({ error: 'source_unavailable' }) };
     if (url.startsWith('/api/reporting?')) return { ok: true, json: async () => structuredClone(reporting) };
+    if (url === '/api/discovery/findings' && discovery !== undefined) return { ok: true, json: async () => structuredClone(discovery) };
     return { ok: true, json: async () => structuredClone(feed) };
   };
   vm.runInNewContext(script, { document, fetch, URL, AbortController, setTimeout, clearTimeout, window: { matchMedia: () => ({ matches: false }) } }, { filename: 'apps/web/app.js' });
@@ -179,6 +180,38 @@ test('generic saved scan leads have their own category and no compromise badge',
   assert.doesNotMatch(app.$('record-list').textContent,/Compromise risk/);
   app.by('data-category','compromise').click();
   assert.equal(app.$('record-list').children.length,0);
+});
+
+test('an explicitly unavailable deployed research backend keeps local filtering and reporting while blocking mutations', async () => {
+  const cases=[makeCase('site-a','website'),makeCase('phone-b','phone')];
+  const app=await startApp(makeFeed(cases), { discovery:{mode:'live',findings:{},eligibleCaseIds:cases.map(item=>item.id),researchBackendAvailable:false},
+    reporting:{caseId:'phone-b',kind:'phone',registration:null,routes:[],summary:'Review the current listing before correcting it.'} });
+  assert.equal(app.$('research-capability-note').hidden,false);
+  assert.match(app.$('research-capability-note').textContent,/Live web research is not connected yet/);
+  assert.equal(app.$('search-submit').textContent,'Filter records');
+  assert.equal(app.$('pipeline-submit').disabled,true);
+  assert.equal(app.$('case-detail').querySelectorAll('.research-button')[0].disabled,true);
+  assert.ok(app.$('case-detail').querySelectorAll('.decision-buttons')[0].children.every(button=>button.disabled));
+  const discover=app.$('category-board').children.find(button=>button.textContent==='Live discovery unavailable');
+  assert.equal(discover.disabled,true);
+  app.$('search-input').value='phone'; app.$('search-input').dispatch('input');
+  app.$('search-form').dispatch('submit');
+  assert.equal(app.$('record-list').children.length,1);
+  assert.match(app.$('record-list').textContent,/phone-b/);
+  assert.match(app.$('route-output').textContent,/view reporting steps/);
+  app.$('pipeline-form').dispatch('submit');
+  app.$('case-detail').querySelectorAll('.report-toggle')[0].click(); await flush();
+  assert.ok(app.requests.some(request=>request.url.startsWith('/api/reporting?')));
+  assert.equal(app.requests.filter(request=>request.method==='POST').length,0);
+});
+
+test('an omitted capability preserves the local runtime research controls', async () => {
+  const item=makeCase('local-a','website');
+  const app=await startApp(makeFeed([item]),{discovery:{mode:'live',findings:{},eligibleCaseIds:[item.id],due:1}});
+  assert.equal(app.$('research-capability-note').hidden,true);
+  assert.equal(app.$('case-detail').querySelectorAll('.research-button')[0].disabled,false);
+  assert.equal(app.$('pipeline-submit').disabled,false);
+  assert.ok(app.$('case-detail').querySelectorAll('.decision-buttons')[0].children.every(button=>!button.disabled));
 });
 
 test('a live-source failure stays explicit and refresh failure preserves dated records', async () => {

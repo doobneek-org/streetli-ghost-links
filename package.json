@@ -10,6 +10,8 @@
     "start": "node apps/agent/fixture-server.mjs",
     "dev": "node --watch apps/agent/fixture-server.mjs",
     "precompute": "node scripts/precompute-discovery.mjs",
+    "cloudflare:dev": "wrangler dev",
+    "cloudflare:deploy": "wrangler deploy",
     "test": "node --test"
   }
 }
