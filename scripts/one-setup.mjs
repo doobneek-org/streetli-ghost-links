@@ -14,7 +14,8 @@ const one = args => JSON.parse(execFileSync('npx', ['-y', '@withone/cli', '--age
 const WANTED = {
   discordMessage: { platform: 'discord', intent: 'send a message to a channel', method: 'POST' },
   gmailSend: { platform: 'gmail', intent: 'send an email', method: 'POST' },
-  sheetsAppend: { platform: 'google-sheets', intent: 'append rows to a spreadsheet', method: 'POST' }
+  sheetsAppend: { platform: 'google-sheets', intent: 'append rows to a spreadsheet', method: 'POST' },
+  twilioSms: { platform: 'twilio', intent: 'send an sms message', method: 'POST' }
 };
 
 const listed = one(['list']);

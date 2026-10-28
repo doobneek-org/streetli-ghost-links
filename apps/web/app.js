@@ -37,7 +37,7 @@
   let hunterName = '';
   try { hunterName = localStorage.getItem('ghost-links-hunter') || ''; } catch { hunterName = ''; }
   let board = [];
-  let oneReady = { discord: false, gmail: false, sheets: false };
+  let oneReady = { discord: false, gmail: false, sheets: false, sms: false };
   const oneMissing = app => `Connect ${app} in One first (npm run one:setup).`;
   const rankTitle = points => points >= 100 ? '⭐ Spectral Superhero' : points >= 30 ? '🦸 Poltergeist Wrangler' : points >= 10 ? '👻 Ghost Buster' : '🕯 Rookie Hunter';
 
@@ -690,14 +690,14 @@
     runResearch('/api/ask', { request: ask.input.value }, ask.output, ask.submit, renderAskResult);
   });
 
-  // ---- One actions (Discord / Gmail / Google Sheets), always on an explicit click ----
+  // ---- One actions (Discord / Gmail / Google Sheets / Twilio SMS), always on an explicit click ----
   async function oneCall(url, body, button, status, success) {
     button.disabled = true;
     status.textContent = 'Working…';
     try {
       const response = await fetch(url, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(({ invalid_email: 'Enter a valid email address.', no_service_results: 'Run a service search first.', one_throttled: 'Please wait a few seconds and try again.',
+      if (!response.ok) throw new Error(({ invalid_email: 'Enter a valid email address.', invalid_phone: 'Enter a valid phone number, like 212-555-0123 or +44 20 7946 0958.', no_service_results: 'Run a service search first.', one_throttled: 'Please wait a few seconds and try again.',
         one_action_failed: `One could not complete the action${payload.platformStatus ? ` (the app returned ${payload.platformStatus})` : ''}. Check the connection in One.` })[payload.error]
         || (String(payload.error || '').includes('not_configured') ? 'That app is not connected in One yet.' : 'The action failed.'));
       status.textContent = success(payload);
@@ -716,11 +716,19 @@
     send.type = 'submit'; send.disabled = !oneReady.gmail; send.title = oneReady.gmail ? '' : oneMissing('Gmail');
     emailForm.append(email, send);
     emailForm.addEventListener('submit', event => { event.preventDefault(); oneCall('/api/one/email-list', { to: email.value }, send, status, payload => `Sent “${payload.subject}” through One.`); });
+    const textForm = make('form', 'one-form');
+    const phone = make('input', 'decision-note');
+    phone.type = 'tel'; phone.maxLength = 32; phone.autocomplete = 'tel'; phone.placeholder = '212-555-0123'; phone.setAttribute('aria-label', 'Text this list to');
+    const text = make('button', 'secondary-button', t('📱 Text me this list', '📱 Send this list to my phone'));
+    text.type = 'submit'; text.disabled = !oneReady.sms; text.title = oneReady.sms ? '' : oneMissing('Twilio');
+    textForm.append(phone, text);
+    textForm.addEventListener('submit', event => { event.preventDefault(); oneCall('/api/one/text-list', { to: phone.value }, text, status, payload => `Texted the list to ${payload.to} through One.`); });
     const log = make('button', 'secondary-button', result.kind === 'event' ? t('🗂 Log event + action list (Sheets)', '🗂 Record this calamity in the grimoire (Sheets)') : '🗂 Add to action list (Sheets)');
     log.type = 'button'; log.disabled = !oneReady.sheets; log.title = oneReady.sheets ? '' : oneMissing('Google Sheets');
     log.addEventListener('click', () => oneCall('/api/one/log-event', {}, log, status, payload => `Logged 1 event and ${payload.actions} action items to the tracker through One.`));
-    box.append(make('div', 'eyebrow', 'Take action (via One)'), emailForm, log, status);
-    if (!oneReady.gmail || !oneReady.sheets) box.append(make('p', 'evidence-meta', `Not connected yet: ${[!oneReady.gmail && 'Gmail', !oneReady.sheets && 'Google Sheets'].filter(Boolean).join(', ')}. Run npm run one:setup after connecting them in One.`));
+    box.append(make('div', 'eyebrow', 'Take action (via One)'), emailForm, textForm, log, status);
+    const missing = [!oneReady.gmail && 'Gmail', !oneReady.sms && 'Twilio (text)', !oneReady.sheets && 'Google Sheets'].filter(Boolean);
+    if (missing.length) box.append(make('p', 'evidence-meta', `Not connected yet: ${missing.join(', ')}. Run npm run one:setup after connecting them in One.`));
     return box;
   }
 

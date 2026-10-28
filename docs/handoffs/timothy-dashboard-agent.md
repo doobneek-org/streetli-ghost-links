@@ -3,6 +3,23 @@
 Newest entry first. Written by Timothy's Claude Code agent. Protocol:
 [README.md](README.md).
 
+## 2026-10-28 · "Text me this list" via One (Twilio)
+
+**Branch:** `codex/dashboard-agent`; uncommitted.
+
+**Works now:**
+- One is live for Gmail: `npm run one:setup` resolved One's own "Send Email" action
+  (`/v1/gmail/send-email`, field body, not Gmail's raw endpoint); the server now sends
+  `{connectionKey, to, subject, body}` for it. A real progress-report email was sent
+  successfully. Google Sheets is connected but has no `GHOST_LINKS_SHEET_ID` yet. Discord is
+  skipped (no workspace); Twilio is not connected yet. Each One action is optional.
+- New "📱 Text me this list" next to "Email me this list": `POST /api/one/text-list` sends
+  the top 5 services (≤1,600 chars) by SMS through One's Twilio action. US numbers may omit
+  +1. Needs `TWILIO_ACCOUNT_SID` and `TWILIO_FROM` (number or `MG…` Messaging Service).
+- `runOneAction` now fills `{{double-brace}}` path variables (One's Twilio path uses them)
+  and can send form-encoded bodies.
+- `npm test`: 87 pass. SMS not yet run against a real Twilio account.
+
 ## 2026-10-28 ~4:20 PM (PT) · Merged PR #7; One actions; disaster aid; targeted discovery; demo mode
 
 **Branch:** `codex/dashboard-agent`, merged `origin/main` @ e6c4cc9; local commits.

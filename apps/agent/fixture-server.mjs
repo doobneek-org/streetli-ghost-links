@@ -8,7 +8,7 @@ import { createResearchRunner, manualTestCase } from './research-route.mjs';
 import { createReviewStore, leaderboard, parseDecision } from './review-actions.mjs';
 import { createDiscoveryRunner, runPython } from './discovery-runner.mjs';
 import { mkdir as mkdirCache, readFile as readCache, writeFile as writeCache } from 'node:fs/promises';
-import { eventRows, ghostReportEmail, gmailRaw, loadOneConfig, oneStatus, runOneAction, serviceListEmail, teamTicketText, validEmail } from './one-actions.mjs';
+import { eventRows, ghostReportEmail, gmailRaw, loadOneConfig, normalizePhone, oneStatus, runOneAction, serviceListEmail, serviceListSms, teamTicketText, validEmail } from './one-actions.mjs';
 
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 const contentTypes = { '/': 'text/html; charset=utf-8', '/app.js': 'text/javascript; charset=utf-8', '/styles.css': 'text/css; charset=utf-8' };
@@ -299,8 +299,25 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
               message = ghostReportEmail({ leaderboard: leaderboard(decisions), decisions, findings, mode: lastFeed.mode });
             }
             lastOneAction = Date.now();
-            await run('gmailSend', { pathVariables: { userId: 'me', user_id: 'me' }, body: { raw: gmailRaw({ to: body.to, ...message }) } });
+            // One's own "Send Email" action takes fields; Gmail's raw send endpoint takes an RFC 822 message.
+            const gmail = config.gmailSend;
+            await run('gmailSend', { pathVariables: { userId: 'me', user_id: 'me' }, body: gmail.path.endsWith('/send-email')
+              ? { connectionKey: gmail.connectionKey, to: body.to, subject: message.subject, body: message.text }
+              : { raw: gmailRaw({ to: body.to, ...message }) } });
             return send(200, { ok: true, sent: 'gmail', subject: message.subject });
+          }
+          if (path === '/api/one/text-list') {
+            if (!status.sms) return send(503, { error: 'one_sms_not_configured' });
+            const to = normalizePhone(body?.to);
+            if (!to) return send(400, { error: 'invalid_phone' });
+            if (!lastServiceResult?.services?.length) return send(409, { error: 'no_service_results' });
+            const from = oneEnv.TWILIO_FROM;
+            const sid = oneEnv.TWILIO_ACCOUNT_SID;
+            lastOneAction = Date.now();
+            await run('twilioSms', { pathVariables: { TWILIO_ACCOUNT_SID: sid, AccountSid: sid }, form: {
+              To: to, ...(/^MG[0-9a-fA-F]{32}$/.test(from) ? { MessagingServiceSid: from } : { From: from }),
+              Body: serviceListSms({ services: lastServiceResult.services, area: lastServiceResult.searchedArea || lastServiceResult.event?.area }) } });
+            return send(200, { ok: true, sent: 'sms', to: `…${to.slice(-4)}` });
           }
           if (path === '/api/one/log-event') {
             if (!status.sheets) return send(503, { error: 'one_sheets_not_configured' });

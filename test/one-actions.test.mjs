@@ -2,14 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createFixtureServer } from '../apps/agent/fixture-server.mjs';
-import { gmailRaw, oneStatus, teamTicketText } from '../apps/agent/one-actions.mjs';
+import { gmailRaw, normalizePhone, oneStatus, runOneAction, serviceListSms, teamTicketText } from '../apps/agent/one-actions.mjs';
 
 const config = {
   discordMessage: { connectionKey: 'live::discord::default::abc', actionId: 'conn_mod_def::discord', method: 'POST', path: '/channels/{channelId}/messages' },
   gmailSend: { connectionKey: 'live::gmail::default::abc', actionId: 'conn_mod_def::gmail', method: 'POST', path: '/gmail/v1/users/{userId}/messages/send' },
-  sheetsAppend: { connectionKey: 'live::google-sheets::default::abc', actionId: 'conn_mod_def::sheets', method: 'POST', path: '/v4/spreadsheets/{spreadsheetId}/values/{range}:append' }
+  sheetsAppend: { connectionKey: 'live::google-sheets::default::abc', actionId: 'conn_mod_def::sheets', method: 'POST', path: '/v4/spreadsheets/{spreadsheetId}/values/{range}:append' },
+  twilioSms: { connectionKey: 'live::twilio::default::abc', actionId: 'conn_mod_def::twilio', method: 'POST', path: '/2010-04-01/Accounts/{{TWILIO_ACCOUNT_SID}}/Messages.json' }
 };
-const env = { ONE_SECRET: 'sk_test_secret_value', DISCORD_CHANNEL_ID: '1564842098740695100', GHOST_LINKS_SHEET_ID: 'sheet123' };
+const env = { ONE_SECRET: 'sk_test_secret_value', DISCORD_CHANNEL_ID: '1564842098740695100', GHOST_LINKS_SHEET_ID: 'sheet123', TWILIO_ACCOUNT_SID: 'AC123', TWILIO_FROM: '+15005550006' };
 
 async function withServer(one, run) {
   const server = await createFixtureServer({ one });
@@ -37,12 +38,14 @@ test('One actions refuse when unconfigured, on bad input, or before a service se
   await withServer({ loadConfig: async () => ({}), fetchImpl, env: {} }, async base => {
     assert.equal((await fetch(`${base}/api/one/team-ticket`, { method: 'POST', body: '{"caseId":"demo-website-001"}' })).status, 503);
     const status = await (await fetch(`${base}/api/one/status`)).json();
-    assert.deepEqual(status, { configured: false, discord: false, gmail: false, sheets: false });
+    assert.deepEqual(status, { configured: false, discord: false, gmail: false, sheets: false, sms: false });
   });
   await withServer({ loadConfig: async () => config, fetchImpl, env }, async base => {
     assert.equal((await fetch(`${base}/api/one/email-list`, { method: 'POST', body: '{"to":"not-an-email"}' })).status, 400);
     await new Promise(resolve => setTimeout(resolve, 10));
     assert.equal((await fetch(`${base}/api/one/email-list`, { method: 'POST', body: '{"to":"me@example.org"}' })).status, 409);
+    assert.equal((await fetch(`${base}/api/one/text-list`, { method: 'POST', body: '{"to":"call me"}' })).status, 400);
+    assert.equal((await fetch(`${base}/api/one/text-list`, { method: 'POST', body: '{"to":"212-555-0123"}' })).status, 409);
   });
 });
 
@@ -53,6 +56,40 @@ test('message builders stay bounded and plain', () => {
   const raw = Buffer.from(gmailRaw({ to: 'me@example.org', subject: 'Hi', text: 'Body' }), 'base64url').toString();
   assert.match(raw, /^To: me@example.org/); assert.match(raw, /Content-Type: text\/plain/);
   assert.equal(oneStatus(config, env).sheets, true);
+  assert.equal(oneStatus(config, env).sms, true);
+  assert.equal(oneStatus(config, { ...env, TWILIO_FROM: '' }).sms, false);
+});
+
+test('text list normalizes the number and stays within one Twilio message', () => {
+  assert.equal(normalizePhone('(212) 555-0123'), '+12125550123');
+  assert.equal(normalizePhone('1 212 555 0123'), '+12125550123');
+  assert.equal(normalizePhone('+44 20 7946 0958'), '+442079460958');
+  assert.equal(normalizePhone('555-0123'), ''); assert.equal(normalizePhone('call me'), '');
+  const services = Array.from({ length: 12 }, (_, index) => ({ name: `Pantry ${index} ${'x'.repeat(400)}`, address: 'a'.repeat(400), phone: '+12125550123' }));
+  const sms = serviceListSms({ services, area: 'Harlem' });
+  assert.ok(sms.length <= 1600); assert.match(sms, /^Ghost Links: services near Harlem/); assert.match(sms, /911/);
+});
+
+test('Twilio action fills {{double-brace}} paths and sends a form body', async () => {
+  const calls = [];
+  const fetchImpl = async (url, options) => { calls.push({ url: String(url), options }); return new Response('{"sid":"SM1"}', { status: 201 }); };
+  await runOneAction(config, 'twilioSms', { pathVariables: { TWILIO_ACCOUNT_SID: 'AC123' }, form: { To: '+12125550123', From: '+15005550006', Body: 'Hi & bye' } }, { env, fetchImpl });
+  assert.equal(calls[0].url, 'https://api.withone.ai/v1/passthrough/2010-04-01/Accounts/AC123/Messages.json');
+  assert.equal(calls[0].options.headers['Content-Type'], 'application/x-www-form-urlencoded');
+  assert.equal(new URLSearchParams(calls[0].options.body).get('Body'), 'Hi & bye');
+});
+
+test('progress report uses One\'s field-based Gmail Send Email action', async () => {
+  const calls = [];
+  const fetchImpl = async (url, options) => { calls.push({ url: String(url), options }); return new Response('{"email":{"messageId":"m1"}}', { status: 200 }); };
+  const oneGmail = { ...config, gmailSend: { connectionKey: 'live::gmail::default::abc', actionId: 'conn_mod_def::gmail2', method: 'POST', path: '/v1/gmail/send-email' } };
+  await withServer({ loadConfig: async () => oneGmail, fetchImpl, env }, async base => {
+    assert.equal((await fetch(`${base}/api/one/ghost-report`, { method: 'POST', body: '{"to":"me@example.org"}' })).status, 200);
+  });
+  assert.equal(calls[0].url, 'https://api.withone.ai/v1/passthrough/v1/gmail/send-email');
+  const sent = JSON.parse(calls[0].options.body);
+  assert.equal(sent.to, 'me@example.org'); assert.equal(sent.connectionKey, 'live::gmail::default::abc');
+  assert.match(sent.subject, /Ghost Links report/); assert.equal(sent.raw, undefined);
 });
 
 test('demo mode returns saved results labeled as saved, and misses cleanly', async () => {

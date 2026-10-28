@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const CONFIG = fileURLToPath(new URL('../../data/one-actions.json', import.meta.url));
 const BASE = 'https://api.withone.ai/v1/passthrough';
-export const ONE_ACTIONS = ['discordMessage', 'gmailSend', 'sheetsAppend'];
+export const ONE_ACTIONS = ['discordMessage', 'gmailSend', 'sheetsAppend', 'twilioSms'];
 
 export async function loadOneConfig(path = CONFIG) {
   try { return JSON.parse(await readFile(path, 'utf8')); } catch { return {}; }
@@ -20,15 +20,17 @@ export function oneStatus(config, env = process.env) {
     configured: Boolean(env.ONE_SECRET),
     discord: ready('discordMessage') && Boolean(env.DISCORD_CHANNEL_ID),
     gmail: ready('gmailSend'),
-    sheets: ready('sheetsAppend') && Boolean(env.GHOST_LINKS_SHEET_ID)
+    sheets: ready('sheetsAppend') && Boolean(env.GHOST_LINKS_SHEET_ID),
+    sms: ready('twilioSms') && Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_FROM)
   };
 }
 
-// Runs one resolved action. pathVariables fill {placeholders} in the action's path.
-export async function runOneAction(config, name, { pathVariables = {}, query = {}, body } = {}, { env = process.env, fetchImpl = fetch } = {}) {
+// Runs one resolved action. pathVariables fill {placeholders} (or {{placeholders}}) in the action's path.
+// `form` sends an application/x-www-form-urlencoded body (Twilio) instead of JSON.
+export async function runOneAction(config, name, { pathVariables = {}, query = {}, body, form } = {}, { env = process.env, fetchImpl = fetch } = {}) {
   const action = config?.[name];
   if (!env.ONE_SECRET || !action?.actionId || !action.connectionKey || !action.path) throw Object.assign(new Error('one_not_configured'), { status: 503 });
-  const path = action.path.replace(/\{(\w+)\}/g, (_, key) => {
+  const path = action.path.replace(/\{\{?(\w+)\}?\}/g, (_, key) => {
     if (pathVariables[key] === undefined) throw Object.assign(new Error(`missing_path_variable:${key}`), { status: 500 });
     return encodeURIComponent(String(pathVariables[key]));
   });
@@ -37,8 +39,8 @@ export async function runOneAction(config, name, { pathVariables = {}, query = {
   const response = await fetchImpl(url, {
     method: action.method || 'POST',
     headers: { 'x-one-secret': env.ONE_SECRET, 'x-one-connection-key': action.connectionKey, 'x-one-action-id': action.actionId,
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
-    body: body === undefined ? undefined : JSON.stringify(body),
+      ...(form ? { 'Content-Type': 'application/x-www-form-urlencoded' } : body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+    body: form ? new URLSearchParams(form).toString() : body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(20000)
   });
   const text = await response.text();
@@ -83,6 +85,19 @@ export function serviceListEmail({ services, area, event }) {
   };
 }
 
+// One SMS (Twilio caps Body at 1,600 characters): top services, shortest form.
+export function serviceListSms({ services, area }) {
+  const head = `Ghost Links: services${area ? ` near ${clip(area, 60)}` : ''}, closest first.`;
+  const tail = 'Call ahead to confirm. Emergency 911, crisis 988, city 311.';
+  const lines = [];
+  for (const [index, service] of services.slice(0, 5).entries()) {
+    const line = [`${index + 1}. ${clip(service.name, 80)}`, service.address && clip(service.address, 100), service.phone && clip(service.phone, 30)].filter(Boolean).join(', ');
+    if ([head, ...lines, line, tail].join('\n').length > 1600) break;
+    lines.push(line);
+  }
+  return [head, ...lines, tail].join('\n');
+}
+
 export function ghostReportEmail({ leaderboard = [], decisions = {}, findings = {}, mode }) {
   const values = Object.values(decisions);
   const count = decision => values.filter(action => action.decision === decision).length;
@@ -104,6 +119,15 @@ export function gmailRaw({ to, subject, text }) {
 }
 
 export const validEmail = value => typeof value === 'string' && value.length <= 254 && /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[A-Za-z]{2,}$/.test(value);
+
+// US numbers may omit +1; anything else must already be E.164. Returns '' when invalid.
+export function normalizePhone(value) {
+  if (typeof value !== 'string' || value.length > 32) return '';
+  const digits = value.replace(/[\s().-]/g, '');
+  if (/^\d{10}$/.test(digits)) return `+1${digits}`;
+  if (/^1\d{10}$/.test(digits)) return `+${digits}`;
+  return /^\+[1-9]\d{7,14}$/.test(digits) ? digits : '';
+}
 
 export function eventRows(result, now = new Date().toISOString()) {
   const event = result.event || {};
