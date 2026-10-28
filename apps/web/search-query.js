@@ -9,7 +9,8 @@
   'use strict';
 
   const UNKNOWN_PROVIDER = 'Historical provider (identity unavailable)';
-  const EXCLUDED_DOMAINS = ['gogetta.nyc'];
+  // Mirrors OWNED_DOMAINS in packages/contracts/discovery-plan.mjs; a test pins them equal.
+  const EXCLUDED_DOMAINS = ['gogetta.nyc', 'yourpeer.nyc'];
   const quote = value => `"${String(value).replace(/["\\]/g, ' ').replace(/\s+/g, ' ').trim()}"`;
 
   // Only North American numbers have a known printed layout; anything else stays exact.
@@ -29,5 +30,5 @@
     return `${core}${organization}${EXCLUDED_DOMAINS.map(domain => ` -site:${domain}`).join('')}`;
   }
 
-  window.ghostLinksSearchQuery = { build, phoneVariants };
+  window.ghostLinksSearchQuery = { build, phoneVariants, excludedDomains: EXCLUDED_DOMAINS };
 })();
