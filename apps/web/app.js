@@ -801,9 +801,36 @@
     return card;
   }
 
+  // A service request with no place: ask where to look, or search all of New York City.
+  function askForPlace(box, text) {
+    box.append(make('p', 'research-note', 'Where should I look? Add a neighborhood, borough or cross streets, or search all of New York City.'));
+    const form = make('form', 'one-form');
+    const place = make('input', 'decision-note');
+    place.maxLength = 80; place.placeholder = 'Harlem, the Bronx, 125th St and Lenox…'; place.setAttribute('aria-label', 'Where to look');
+    const here = make('button', 'secondary-button', 'Search here');
+    here.type = 'submit';
+    const all = make('button', 'secondary-button', 'Search all of NYC');
+    all.type = 'button';
+    form.append(place, here, all);
+    const run = body => runResearch('/api/route', body, $('route-output'), $('search-submit'), renderRouted);
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      const where = place.value.trim();
+      if (!where) { place.focus(); return; }
+      const request = `${text} in ${where}`.slice(0, 300);
+      elements.input.value = request;
+      run({ request });
+    });
+    all.addEventListener('click', () => run({ request: text, citywide: true }));
+    box.append(form);
+    setTimeout(() => place.focus(), 0);
+    return box;
+  }
+
   function renderEventResult(result) {
     setQueueOpen(false);
     const box = make('div', 'research-result');
+    if (result.needsPlace) return askForPlace(box, result.text || '');
     if (result.stopped) { box.append(make('p', 'research-error', result.stopped)); return box; }
     const finding = result.kind === 'find';
     if (result.event) box.append(make('p', 'event-title', finding ? `${result.event.service_types?.join(' & ') || 'Services'} · ${result.event.area}` : `${result.event.event_type} · ${result.event.area}`));
@@ -825,6 +852,7 @@
       }
     }
     if (result.event?.service_types?.length) box.append(make('p', 'research-note', `${result.kind === 'event' ? t(`What someone affected by a ${result.event.event_type} may need`, `What a soul touched by this ${result.event.event_type} may need`) : 'Looking for'}: ${result.event.service_types.join(' · ')}. Closest first.`));
+    if (result.citywide) box.append(make('p', 'research-note', 'Across New York City. No distances are shown; call ahead to confirm the location and hours.'));
     if (result.searchedArea) box.append(make('p', 'research-note', `Few services are listed in ${result.event?.area || 'that area'} itself, so this also includes ${result.searchedArea}.`));
     box.append(make('p', 'research-summary', `${services.length} services found nearby · ${disrupted.length} report a disruption · checked ${checkedTime(result.observedAt)}`));
     if (disrupted.length) {

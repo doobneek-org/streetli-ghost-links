@@ -83,6 +83,8 @@ class StatusList(BaseModel):
 class EventState(BaseModel):
     text: str = ""
     find_only: bool = False
+    citywide: bool = False
+    needs_place: bool = False
     cases: list[dict] = []
     stopped: str | None = None
     parsed: dict = {}
@@ -141,6 +143,12 @@ class EventCheckFlow(Flow[EventState]):
                          f'Report: "{self.state.text}"\nDefault city: New York, NY.', ParsedEvent)
         except Exception as error:
             return self.stop("parse", f"Could not read the event: {type(error).__name__}")
+        if parsed and self.state.find_only and not parsed.area.strip():
+            if not self.state.citywide:
+                # Ask rather than guess: the person chooses a place or a city-wide search.
+                self.state.needs_place = True
+                return self.stop("parse", "Where should I look? Add a neighborhood, borough or cross streets, or search all of New York City.")
+            parsed.area, parsed.nearby_area, parsed.reference_point = "New York City", "", ""
         if not parsed or not parsed.area.strip() or (not parsed.is_event and not self.state.find_only):
             return self.stop("parse", "That does not name a place. Try: 'there was a flood on the Upper West Side' or 'food pantry in Harlem'.")
         if self.state.find_only:
@@ -440,9 +448,10 @@ def field_checks(service: dict, own_text: str, observed_at: str) -> list[dict]:
     return checks
 
 
-def check_event(text: str, cases: list[dict] | None = None, emit: Emit | None = None, find_only: bool = False) -> dict:
+def check_event(text: str, cases: list[dict] | None = None, emit: Emit | None = None, find_only: bool = False,
+                citywide: bool = False) -> dict:
     flow = EventCheckFlow(emit=emit, suppress_flow_events=True)
-    flow.kickoff(inputs={"text": text, "cases": cases or [], "find_only": find_only})
+    flow.kickoff(inputs={"text": text, "cases": cases or [], "find_only": find_only, "citywide": citywide})
     s = flow.state
     services = []
     for listed in s.listed:
@@ -451,14 +460,18 @@ def check_event(text: str, cases: list[dict] | None = None, emit: Emit | None = 
         merged = {**listed, **status}
         merged["checks"] = field_checks(merged, s.own_pages.get(listed["name"], ""), s.observed_at or now())
         services.append(merged)
-    # Closest first, measured from a central point Parasail named for the area.
-    center = geocode((s.parsed or {}).get("reference_point", "")) or geocode(f"{(s.parsed or {}).get('area', '')}, New York")
+    # Closest first, measured from a central point Parasail named for the area. A city-wide
+    # search has no meaningful center, so it shows no distances.
+    citywide = (s.parsed or {}).get("area") == "New York City" and s.citywide
+    center = None if citywide or not s.parsed else (
+        geocode(s.parsed.get("reference_point", "")) or geocode(f"{s.parsed.get('area', '')}, New York"))
     for service in services:
         point = geocode(service["address"]) if center and service["address"] else None
         service["distanceMiles"] = round(miles(center, point), 1) if point and miles(center, point) < 8 else None  # farther is almost always a geocoder mismatch
     services.sort(key=lambda x: (x["distanceMiles"] is None, x["distanceMiles"] or 0))
     return {
         "kind": "find" if s.find_only else "event", "text": s.text, "stopped": s.stopped, "event": s.parsed or None,
+        "needsPlace": s.needs_place, "citywide": citywide,
         "observedAt": s.observed_at or now(), "news": s.news, "services": services, "searchedArea": s.searched_area, "aid": s.aid,
         "areaRecords": [{"id": c.get("id"), "name": c.get("name"), "locality": c.get("locality")} for c in s.area_cases],
     }

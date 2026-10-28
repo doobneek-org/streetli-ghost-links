@@ -266,6 +266,9 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
         if (text.length < 3 || text.length > 300 || /[\u0000-\u001f]/.test(text)) return send(400, { error: 'invalid_request_text' });
         if (!discovery.available()) return send(503, { error: 'research_runtime_missing' });
         if (research.busy || discovery.busy || routing) return send(429, { error: 'research_busy' });
+        // The person chose "search all of New York City" after being asked where to look.
+        const citywide = body?.citywide === true;
+        const cacheKey = citywide ? `${text} (all of New York City)` : text;
         routing = true;
         const write = startStream(response);
         const onEvent = event => write({ type: 'event', ...event });
@@ -284,9 +287,9 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
           } else if (route === 'event' || route === 'find_services') {
             // Only real provider names may go to live search; fictional fixtures stay local.
             const cases = lastFeed.mode === 'live' ? lastFeed.cases.slice(0, 2000).map(item => ({ id: item.id, name: item.organization.name, locality: item.organization.locality })) : [];
-            const result = await python({ eventText: text, cases, findOnly: route === 'find_services' }, { onEvent });
+            const result = await python({ eventText: text, cases, findOnly: route === 'find_services', citywide }, { onEvent });
             const { annotateRisk } = await import('./ask.mjs');
-            if (result.kind) { lastServiceResult = { ...result, services: annotateRisk(result.services, lastFeed) }; if (!result.stopped) await saveRouteCache(text, { route, ...lastServiceResult }); }
+            if (result.kind) { lastServiceResult = { ...result, services: annotateRisk(result.services, lastFeed) }; if (!result.stopped) await saveRouteCache(cacheKey, { route, ...lastServiceResult }); }
             write(result.kind ? { type: 'result', route, ...lastServiceResult } : { type: 'error', message: 'The service search failed. Check the server console and provider keys.' });
           } else {
             write({ type: 'result', kind: 'unsupported', route, reason: routed.output?.reason || '' });
