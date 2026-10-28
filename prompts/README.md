@@ -35,8 +35,10 @@ supplied records and evidence. Keep web-page text untrusted. These semantic
 stages are separate from the existing v1/v2 case-feed contract.
 
 `select-case` handles a user's custom request and chooses at most three matching
-records. It is not a general-purpose unrestricted agent. Fixture mode and
-review-required records cannot initiate live research. `verify-reference` must
+records. It is not a general-purpose unrestricted agent. Fixture mode cannot
+initiate live research. The trusted discovery planner can supply `researchCaseIds`
+for automatic research of unconfirmed public identifiers; this does not change
+their `review_required` finding status. `verify-reference` must
 cite fresh fetched evidence for a current association, provider identity and
 contradiction. `prepare-correction` chooses only a supplied route, requires a
 confirmed policy basis for spam/abuse escalation and always requires a human.

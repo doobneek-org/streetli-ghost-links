@@ -16,7 +16,7 @@ function fresh(document, now, maxAgeMs) {
     && observed <= now && now - observed <= maxAgeMs;
 }
 
-export function validateSelection(output, { cases = [], mode } = {}) {
+export function validateSelection(output, { cases = [], mode, researchCaseIds = [] } = {}) {
   shape(output, ['intent', 'kinds', 'states', 'locality', 'caseIds', 'question', 'explanation']);
   if (!['browse', 'verify_external', 'prepare_report', 'clarify', 'unsupported'].includes(output.intent)
     || !values(output.kinds, ['website', 'phone', 'email']) || !values(output.states, ['flagged', 'removed', 'replaced'])
@@ -24,6 +24,10 @@ export function validateSelection(output, { cases = [], mode } = {}) {
   list(output.caseIds, 3, 200);
   if (new Set(output.caseIds).size !== output.caseIds.length) fail('duplicate_case');
   const byId = new Map(cases.map(item => [item.id, item]));
+  // This scope comes from the trusted discovery planner, never model output.
+  // Permission to research a flag does not confirm the flag or permit a report.
+  if (!Array.isArray(researchCaseIds) || researchCaseIds.some(id => !byId.has(id))) fail('invalid_research_scope');
+  const researchScope = new Set(researchCaseIds);
   for (const id of output.caseIds) {
     const item = byId.get(id);
     if (!item) fail('unknown_case');
@@ -31,7 +35,8 @@ export function validateSelection(output, { cases = [], mode } = {}) {
     if (output.states.length && !output.states.includes(item.internal?.state)) fail('wrong_state');
   }
   if (['verify_external', 'prepare_report'].includes(output.intent)
-    && (mode !== 'live' || !output.caseIds.length || output.caseIds.some(id => byId.get(id).reviewState !== 'approved_for_research'))) fail('research_not_approved');
+    && (mode !== 'live' || !output.caseIds.length || output.caseIds.some(id => byId.get(id).reviewState !== 'approved_for_research'
+      && !researchScope.has(id)))) fail('research_not_approved');
   if (output.intent === 'clarify' ? !text(output.question, 300) : output.question !== null) fail('invalid_question');
   if (['clarify', 'unsupported'].includes(output.intent) && output.caseIds.length) fail('unexpected_selection');
   return output;

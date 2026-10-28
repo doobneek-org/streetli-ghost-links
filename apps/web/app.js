@@ -168,11 +168,14 @@
     addFact('Recorded reason', readableReason(item.internal.reasonCode));
     if (item.internal.flaggedAt) addFact('Flag recorded', date(item.internal.flaggedAt));
     if (item.internal.correctedAt) addFact(item.internal.source === 'confirmed_correction' ? 'Correction recorded' : 'Removal recorded', date(item.internal.correctedAt));
-    addFact('Provenance', item.internal.source === 'confirmed_correction' ? 'Confirmed correction record' : 'Retained identifier ledger');
+    addFact('Provenance', item.internal.source === 'confirmed_correction' ? 'Confirmed correction record'
+      : item.internal.source === 'saved_scan' ? 'Saved automated scan lead' : 'Retained identifier ledger');
     if (item.replacement?.value) addFact('Replacement', item.replacement.value);
     const context = make('p', 'detail-context', item.internal.source === 'confirmed_correction'
       ? 'This records an internal correction. Check current public sources before claiming that another listing is outdated.'
-      : 'This is a previously recorded flag. Confirm the provider, identifier, and current conditions before making a correction request.');
+      : item.internal.source === 'saved_scan'
+        ? 'An automated scan flagged this destination for review. It is not a confirmed takeover or current external error; check fresh public evidence.'
+        : 'This is a previously recorded flag. Confirm the provider, identifier, and current conditions before making a correction request.');
     const links = make('div', 'detail-links');
     const streetliUrl = safeStreetliUrl(item.location?.url);
     if (streetliUrl) {

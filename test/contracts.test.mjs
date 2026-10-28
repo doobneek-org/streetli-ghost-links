@@ -60,3 +60,13 @@ test('coverage counts and authenticated location links cannot misstate the feed'
   feed.cases[0].location.url = 'https://gogetta.nyc.attacker.example/team/location/sample-location/questions/website';
   assert.throws(() => validateCaseFeed(feed), /matching authenticated Sheets entry/);
 });
+
+test('saved scan leads preserve uncertainty and cannot claim a correction', () => {
+  const feed = historicalFeed();
+  const item = feed.cases[0];
+  item.internal = {...item.internal, source: 'saved_scan', state: 'flagged', correctedAt: null};
+  item.replacement = null;
+  assert.equal(validateCaseFeed(feed), feed);
+  item.internal.state = 'removed';
+  assert.throws(() => validateCaseFeed(feed), /unconfirmed flags/);
+});

@@ -119,6 +119,15 @@ test('record text is never inserted as HTML and placeholder identity is excluded
   assert.ok(app.requests.every(request => request.url.startsWith('/api/')));
 });
 
+test('saved automated findings are displayed as unconfirmed scan leads', async () => {
+  const item = makeCase('scan-lead', 'website', 'flagged');
+  item.internal.source = 'saved_scan';
+  const app = await startApp(makeFeed([item]));
+  assert.match(app.$('case-detail').textContent, /Saved automated scan lead/);
+  assert.match(app.$('case-detail').textContent, /not a confirmed takeover/);
+  assert.doesNotMatch(app.$('case-detail').textContent, /Retained identifier ledger/);
+});
+
 test('reporting is fetched on a click and renders registrar plus safe recipient links', async () => {
   const item = makeCase('site-a', 'website');
   const app = await startApp(makeFeed([item]), { reporting: { caseId: item.id, kind: 'website', summary: 'Review current evidence first.', registration: { status: 'identified', domain: 'site-a.example', registrarName: 'Name.com', checkedAt: '2026-10-28T10:00:00Z', sourceUrl: 'https://lookup.icann.org/', abuseEmail: 'abuse@registrar.example', notice: 'Registrar and host can differ.' }, routes: [ { title: 'Name.com abuse form', url: 'https://www.name.com/abuse', scope: 'domain_abuse', requirements: ['Document current phishing evidence.'], steps: ['Review the report before sending.'] }, { title: '<img onerror=alert(1)>', url: 'javascript:alert(1)', scope: 'listing_correction', requirements: [], steps: [] } ] } });

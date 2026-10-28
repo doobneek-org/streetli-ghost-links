@@ -21,13 +21,27 @@ already works: extend it rather than building a second app.
   work without credentials. The live private bridge is outside this repository.
 - Google/Findhelp reporting guidance and passive registrar RDAP lookup, including
   Name.com/GoDaddy routes when identified. No reports are sent.
-- Executable v1/v2 contracts and tests. `npm test` passes 29 checks at handoff.
+- Executable v1/v2 contracts, deterministic discovery planning, and tests.
 
 The owner's current local feed contains retained historical cases; it is not a
 public dataset or a hosted teammate endpoint. A teammate's `localhost:4318` is
 their own machine. Use fixtures until Ivan supplies an approved reachable feed.
-All imported real cases are `review_required`; Ivan selects and approves real
-research cases. Do not silently promote flags into confirmed findings.
+Imported real cases preserve `review_required` as their finding status. Do not
+silently promote flags into confirmed findings.
+
+The owner has authorized automatic public-web discovery from the
+baseline. A per-record manual dataset is not required. Use the deterministic
+`buildDiscoveryPlan` helper and trusted `researchCaseIds` scope described in
+`docs/external-discovery.md`; keep source flags unconfirmed while researching.
+`saved_scan` is an additional v2 provenance value for automatically imported,
+current-bound saved website findings. It must remain `flagged`, with no
+correction date. It is neither a confirmed correction nor a ledger verdict.
+
+Precompute discovery independently of the user's prompt: deduplicate shared
+identifiers, reuse fresh saved results, invalidate changed source bindings, and
+back off failures. A prompt should select relevant cases and display known
+findings immediately while the bounded worker refreshes due research. The helper
+plans jobs; it does not run providers or persist results by itself.
 
 Ivan owns the private Streetli case exporter, case-selection rules, prompt
 engineering, and evaluation examples. You own frontend design, runtime wiring,
@@ -56,12 +70,12 @@ actual model predictions and score them without committing results or secrets.
    cases; keep that contract stable and propose
    changes to Ivan before changing producers or consumers. Do not request
    Firebase/admin credentials or inspect the private Streetli repository.
-3. Connect You.com Search and Contents. Research an approved case's exact former
+3. Connect You.com Search and Contents. Research an eligible case's exact former
    identifier, then fetch a few candidate pages. Search results are leads;
    distinguish an archival mention from a current provider contact. Show source
    links and observation timestamps. Do not send fictional fixture cases into
    live searches or reporting tools; use clearly labeled replay evidence for
-   fixture mode and an approved real case for the live demonstration.
+   fixture mode and an eligible real case for the live demonstration.
 4. Use CrewAI for bounded discovery, verification, and report preparation, with
    Parasail supplying model inference. Show actual tool events, errors, and
    unknown outcomes. The product must not claim simulated progress or results
@@ -95,7 +109,7 @@ ask the organizers promptly and continue fixture-based UI work.
 
 ## First milestone
 
-One approved real Streetli case produces a record card, an actual You.com
+One eligible real Streetli case produces a record card, an actual You.com
 search/fetch, a Parasail comparison coordinated by CrewAI, cited evidence, and a
 reviewable correction draft. One supports a reviewer-controlled team action.
 Keep the starter runnable without credentials in fixture mode. Defer staff
@@ -116,7 +130,7 @@ First checkpoint: prove a harmless live You.com Search/Contents request, a
 Parasail inference request through CrewAI, and a One connection discovery/read
 without sending a message. Record configuration failures accurately and let the
 account owner resolve sign-in or credit redemption. Then connect one
-owner-approved real case end to end.
+eligible real case end to end.
 
 Commit each working increment on `codex/dashboard-agent`, push that branch and
 open/update a pull request into `main`. After the other side's PR merges, fetch

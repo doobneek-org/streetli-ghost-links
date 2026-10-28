@@ -78,7 +78,7 @@ a contact. The v1 fixture contract remains supported.
 ## Integration sequence
 
 1. Timothy extends the delivered case list, detail view, prompt entry, and reporting panel with actual sponsor-powered research.
-2. The agent selects only cases approved for research, searches the exact old identifier, and verifies whether a result actually refers to the same provider and branch.
+2. The agent uses the trusted automatic discovery plan or explicitly approved cases, searches the exact old identifier, and verifies whether a result actually refers to the same provider and branch. Research eligibility does not confirm a flag. See [automatic discovery](external-discovery.md) for deduplication, cache invalidation and retry policy.
 3. Research results show their source URL, observation time, relevant evidence, and uncertainty. Search snippets alone are leads. Missing search results do not establish that an external listing was corrected.
 4. Ivan maintains the existing private local projection, explicit field allowlisting and provenance; he supplies approved cases and a suitable teammate feed. Browser code receives no source token.
 5. Both contributors test the complete fixture demo and label which integrations are implemented, simulated, or pending.
