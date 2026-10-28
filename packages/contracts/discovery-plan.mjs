@@ -6,7 +6,10 @@ const BASE_RETRY = 5 * 60 * 1000;
 const MAX_RETRY = 6 * 60 * 60 * 1000;
 const MAX_CASES = 10000;
 const MAX_JOBS = 100;
-const OWNED_DOMAINS = ['gogetta.nyc'];
+// Surfaces we operate. A stale identifier on one of these is corrected at the source,
+// not reported as an external finding, so discovery must not spend a query rediscovering
+// our own listings. Verified owned before being added; see docs/external-discovery.md.
+export const OWNED_DOMAINS = ['gogetta.nyc', 'yourpeer.nyc'];
 const hash = value => createHash('sha256').update(value).digest('hex');
 const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 const boundedText = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.length <= max && !/[\u0000-\u001f\u007f]/.test(value);

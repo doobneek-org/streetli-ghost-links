@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
-import { buildDiscoveryPlan } from '../packages/contracts/discovery-plan.mjs';
+import { buildDiscoveryPlan, OWNED_DOMAINS } from '../packages/contracts/discovery-plan.mjs';
 
 // The browser helper is a plain script, so load it the way the page does.
 const context = { window: {} };
 vm.runInNewContext(await readFile(new URL('../apps/web/search-query.js', import.meta.url), 'utf8'), context);
-const { build, phoneVariants } = context.window.ghostLinksSearchQuery;
+const { build, phoneVariants, excludedDomains } = context.window.ghostLinksSearchQuery;
 
 const PHONE = '+16466016040';
 const ORGANIZATION = 'Emanuel African Methodist Evangelical (AME) Church';
@@ -53,4 +53,13 @@ test('non-phone identifiers and unknown providers keep the exact, minimal query'
   assert.equal(phoneVariants('not a phone'), null);
   const unknown = build({ ...phoneCase('Historical provider (identity unavailable)') });
   assert.ok(!unknown.includes('Historical provider'), 'an unavailable provider must not be searched as a literal name');
+});
+
+test('our own surfaces are excluded identically by the planner and the browser helper', () => {
+  // Excluding a surface we operate keeps discovery from spending a query rediscovering
+  // our own listings and reporting them as external findings.
+  assert.ok(OWNED_DOMAINS.includes('yourpeer.nyc'));
+  assert.deepEqual([...excludedDomains].sort(), [...OWNED_DOMAINS].sort());
+  const query = build(phoneCase());
+  for (const domain of OWNED_DOMAINS) assert.ok(query.includes(`-site:${domain}`), `missing exclusion for ${domain}`);
 });

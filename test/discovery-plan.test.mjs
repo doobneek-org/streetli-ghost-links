@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDiscoveryPlan } from '../packages/contracts/discovery-plan.mjs';
+import { buildDiscoveryPlan, OWNED_DOMAINS } from '../packages/contracts/discovery-plan.mjs';
+
+// Derived so adding a surface we operate does not mean hand-editing expectations.
+const exclusions = OWNED_DOMAINS.map(domain => `-site:${domain}`).join(' ');
 
 const NOW = '2026-10-28T20:00:00Z';
 const item = (id = 'case-one', kind = 'website', value = 'https://provider.example.org/contact') => ({
@@ -42,7 +45,7 @@ test('shared identifiers across branches and organizations are broadly searched 
   assert.equal(result.jobs.length, 1);
   assert.deepEqual(result.jobs[0].caseIds, ['branch-a', 'branch-b', 'branch-c']);
   assert.equal(result.jobs[0].identities.length, 3);
-  assert.equal(result.jobs[0].queries[0], '"+12125550123" -site:gogetta.nyc');
+  assert.equal(result.jobs[0].queries[0], `"+12125550123" ${exclusions}`);
   assert.match(result.jobs[0].queries[1], /"212-555-0123" OR "\(212\) 555-0123" OR "212 555 0123"/);
   assert.equal(result.jobs[0].queries.length, 2);
   assert.doesNotMatch(result.jobs[0].queries[1], /Pantry|Referral/);
@@ -89,7 +92,7 @@ test('malformed/private/credential-bearing values and unavailable identities do 
 
 test('owned-domain query exclusions accept only explicit safe hosts and cannot inject operators', () => {
   const result = plan(feed(item()), { ownedDomains: ['GOGEtTA.nyc', 'confirmed.example.org', 'http://evil.org', 'evil.org -site:everywhere.org', 'evil.org:80', '127.0.0.1'] });
-  assert.deepEqual(result.jobs[0].excludedDomains, ['confirmed.example.org', 'gogetta.nyc']);
+  assert.deepEqual(result.jobs[0].excludedDomains, [...new Set(['confirmed.example.org', ...OWNED_DOMAINS])].sort());
   assert(result.jobs[0].queries.every(query => !query.includes('evil')));
 });
 

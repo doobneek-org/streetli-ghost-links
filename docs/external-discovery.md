@@ -40,7 +40,9 @@ timeout, and subsequent bridge reads reuse the preloaded source results.
 Research one identifier once even if multiple branches reference it. Preserve
 the associated case IDs so verification can check each provider and branch.
 Generate at most two quoted queries, five results per query and three fetched
-pages per job. Exclude Streetli's verified own domain, `gogetta.nyc`; configure
+pages per job. Exclude the surfaces we operate, `gogetta.nyc` and `yourpeer.nyc`;
+a stale identifier on either is corrected at the source rather than reported as
+an external finding, so discovery must not spend a query rediscovering it. Configure
 additional owned domains only after checking them.
 
 Persist bounded results separately from the source cases, keyed by the planner's
