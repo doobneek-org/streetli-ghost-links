@@ -37,12 +37,15 @@
     { id: 'website', title: 'Broken websites', tone: 'maybe', detail: 'Pages that no longer load', codes: ['website_not_found'] },
     { id: 'phone', title: 'Bad phone numbers', tone: 'maybe', detail: 'Numbers flagged disconnected', codes: ['phone_disconnected'] },
     { id: 'email', title: 'Bad emails', tone: 'maybe', detail: 'Addresses or domains that fail delivery checks', codes: ['email_invalid', 'email_domain_no_mx'] },
+    { id: 'scan', title: 'Historical scan leads', tone: 'unknown', detail: 'Former website links a past scan saw; may still be listed elsewhere', codes: ['scan_historical_reference'] },
     { id: 'other', title: 'Other flags', tone: 'unknown', detail: 'Invalid, risky or manually flagged contacts', codes: [] }
   ];
   const compromiseRank = ['website_scam_content', 'website_suspected_compromise', 'website_repurposed', 'website_domain_parked'];
   const categoryOf = item => {
-    if (item.internal.source === 'saved_scan' && item.identifier.kind === 'website') return 'compromise';
-    return categories.find(category => category.codes.includes(item.internal.reasonCode))?.id || 'other';
+    const known = categories.find(category => category.codes.includes(item.internal.reasonCode))?.id;
+    if (known) return known;
+    // Other saved automated website findings are treated as possible compromise until reviewed.
+    return item.internal.source === 'saved_scan' && item.identifier.kind === 'website' ? 'compromise' : 'other';
   };
   const decisionLabels = { resolved: 'Resolved by reviewer', not_an_issue: 'Not an issue', follow_up: 'Needs follow-up' };
   let activeCategory = 'all';
