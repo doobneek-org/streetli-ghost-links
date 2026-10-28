@@ -24,9 +24,11 @@ def _post(url: str, body: dict, timeout: float) -> object:
     return response.json()
 
 
-def search(query: str, count: int) -> list[dict]:
-    """Web results: [{url, title, description, snippets: [str]}]."""
-    data = _post(SEARCH_URL, {"query": query, "count": count}, timeout=20)
+def search(query: str, count: int, freshness: str | None = None) -> list[dict]:
+    """Web results: [{url, title, description, snippets: [str], page_age}].
+    freshness ("day", "week", "month", "year") limits results to recent pages."""
+    body = {"query": query, "count": count, **({"freshness": freshness} if freshness else {})}
+    data = _post(SEARCH_URL, body, timeout=20)
     results = []
     for item in (data.get("results") or {}).get("web") or []:
         snippets = item.get("snippets") or []
@@ -35,6 +37,7 @@ def search(query: str, count: int) -> list[dict]:
             "title": item.get("title", ""),
             "description": item.get("description", ""),
             "snippets": [s for s in snippets if isinstance(s, str)],
+            "page_age": item.get("page_age") or "",
         })
     return [r for r in results if r["url"].startswith(("http://", "https://"))]
 

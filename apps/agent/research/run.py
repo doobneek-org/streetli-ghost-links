@@ -45,8 +45,19 @@ def main() -> None:
                         help='Read {"case": {...}, "manualTest": bool} from stdin (used by the Node server)')
     args = parser.parse_args()
 
+    def emit(event: dict) -> None:
+        if args.jsonl:
+            print(json.dumps({"type": "event", **event}), flush=True)
+        else:
+            print(f"{ICONS.get(event['status'], '·')} [{event['step']:8}] {event['message']}", flush=True)
+
     if args.stdin:
         payload = json.load(sys.stdin)
+        if payload.get("eventText"):
+            from .event_flow import check_event
+            result = check_event(payload["eventText"], payload.get("cases"), emit=emit)
+            print(json.dumps({"type": "result", **result}) if args.jsonl else json.dumps(result, indent=2), flush=True)
+            return
         case, manual = payload["case"], bool(payload.get("manualTest"))
     elif args.case_id:
         case, manual = load_case(args.case_id), False
@@ -58,12 +69,6 @@ def main() -> None:
                 "replacement": None, "reviewState": "manual_test"}
     else:
         parser.error("use --case-id, or --manual-test with --value and --org")
-
-    def emit(event: dict) -> None:
-        if args.jsonl:
-            print(json.dumps({"type": "event", **event}), flush=True)
-        else:
-            print(f"{ICONS.get(event['status'], '·')} [{event['step']:6}] {event['message']}", flush=True)
 
     result = research(case, manual_test=manual, emit=emit)
     if args.jsonl:
