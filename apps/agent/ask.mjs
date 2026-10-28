@@ -7,14 +7,14 @@ import { normalizeDiscoveryIdentifier } from '../../packages/contracts/discovery
 
 // Mirrors the category board in apps/web/app.js.
 export const CATEGORIES = {
-  compromise: { detail: 'scam content, suspected takeover, repurposed or parked website', codes: ['website_scam_content', 'website_suspected_compromise', 'website_repurposed', 'website_domain_parked', 'scan_suspected_compromise', 'scan_parked_domain'] },
-  website: { detail: 'website that no longer loads', codes: ['website_not_found'] },
+  compromise: { detail: 'scam content, suspected takeover, repurposed or parked website', codes: ['website_scam_content', 'website_suspected_compromise', 'website_repurposed', 'website_domain_parked', 'scan_suspected_compromise', 'scan_parked_domain', 'scan_organization_mismatch', 'scan_unverified_content_review'] },
+  website: { detail: 'website that no longer loads', codes: ['website_not_found', 'invalid_website'] },
   phone: { detail: 'phone number flagged disconnected', codes: ['phone_disconnected'] },
   email: { detail: 'email address or domain failing delivery checks', codes: ['email_invalid', 'email_domain_no_mx'] },
   scan: { detail: 'automated website review leads, including former links', codes: ['scan_historical_reference'] },
   other: { detail: 'other invalid, risky or manually flagged contacts', codes: [] }
 };
-const RISK_ORDER = ['website_scam_content', 'website_suspected_compromise', 'website_repurposed', 'website_domain_parked'];
+const RISK_ORDER = ['website_scam_content', 'website_suspected_compromise', 'scan_suspected_compromise', 'scan_organization_mismatch', 'website_repurposed', 'website_domain_parked', 'scan_parked_domain', 'scan_unverified_content_review'];
 const MAX_CANDIDATES = 40;
 
 export function categoryOf(item) {
