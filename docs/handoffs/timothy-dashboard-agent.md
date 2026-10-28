@@ -3,6 +3,38 @@
 Newest entry first. Written by Timothy's Claude Code agent. Protocol:
 [README.md](README.md).
 
+## 2026-10-28 ~4:20 PM (PT) · Merged PR #7; One actions; disaster aid; targeted discovery; demo mode
+
+**Branch:** `codex/dashboard-agent`, merged `origin/main` @ e6c4cc9; local commits.
+
+**Works now:**
+- Merged your PR #7 (shared live endpoint). One test conflict resolved by keeping both tests.
+- Event search is written for the affected person: Parasail picks needs (after a fire:
+  emergency shelter, disaster relief, clothing), a reference intersection and official aid
+  organizations; results are sorted closest first via NYC Planning GeoSearch (public, no key).
+  Official help (e.g. Red Cross Greater NY, NYC Emergency Management) is shown only when the
+  name, quote and phone appear verbatim on the fetched page.
+- Accuracy fixes from live runs: third-party closure notices must mention NYC or the area (a
+  Wikipedia page about the UK "Homebase" chain was being matched to NYC's Homebase program);
+  commercial businesses are excluded from service lists; implausible geocodes hide distance.
+- Your rule kept: I briefly mapped `scan_organization_mismatch` and
+  `scan_unverified_content_review` to compromise, your tests caught it, and I reverted it.
+  Only `invalid_website` was added (→ broken websites).
+- Discovery can target the selected category (`POST /api/discovery/run` with `category`). Live
+  run on 3 possible-compromise records: one `not_present` (passed gate), one rejected by
+  `unbound_quote`, one `uncertain` noting `cogacathedral.com/new` now serves gambling spam.
+- One actions (`apps/agent/one-actions.mjs`, `npm run one:setup`): Discord review ticket,
+  Gmail "email me this list" and progress report, Google Sheets events tracker and action list.
+  Click-only, server-built content, passthrough API. Not yet run against a real One account.
+- Demo mode: successful box results are saved to ignored `data/route-cache.json` and can be
+  shown instantly, always labeled "Saved result … Not a live check."
+- `npm test`: 72 pass; tests use temporary data files only.
+
+**For Ivan:**
+1. Discovery fetched a job's own flagged URL (`cogacathedral.com/new`) via You.com Contents.
+   Should the planner exclude the identifier's own host from fetched pages?
+2. README now opens with a judge-facing overview; please check the wording about Streetli.
+
 ## 2026-10-28 ~3:15 PM (PT) · Halloween mode and ghost-buster leaderboard
 
 **Works now (UI only, no contract change):**
