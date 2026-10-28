@@ -2,6 +2,33 @@
 
 Newest entry first. Protocol: [README.md](README.md).
 
+## 2026-10-29 01:05 (EDT) · Web search button searched a format nobody publishes
+
+**Branch / commit:** `codex/streetli-adapter`, also on `main`.
+
+**Works now:** "Open web search" searched the stored E.164 value, so a flagged
+phone produced `"+16466016040"` — a form no directory prints, which is why the
+button returned nothing useful. It now searches the printed variants the
+discovery planner already used:
+`("646-601-6040" OR "(646) 601-6040" OR "646 601 6040") "<provider>" -site:gogetta.nyc`.
+Verified on `you.doobneek.org` across phone and website records. Websites and
+emails keep the exact quoted form, since those are published verbatim.
+
+Measured against You.com before the change: the E.164 query returned ten
+results of which nine were a different congregation in another state, while the
+variant query returned the single genuinely stale listing. That gap is the
+argument for the model verification stage rather than query tuning alone.
+
+**Timothy:** `apps/web/app.js` gains three lines to call the helper, with a
+fallback to the old query if the script is absent. The logic lives in the new
+`apps/web/search-query.js`; `apps/web/styles.css` is still untouched. A test
+asserts the browser variants stay identical to the planner's, so the human
+fallback and the paid pipeline cannot drift apart.
+
+**Open question for Ivan, not Timothy:** `excludedDomains` is still only
+`gogetta.nyc`. If `yourpeer.nyc` is also ours, it likely belongs there too, so
+scans stop surfacing our own surface as an external finding. Not changed yet.
+
 ## 2026-10-29 00:20 (EDT) · Streetli records open inline; provider keys received
 
 **Branch / commit:** `codex/streetli-adapter` @ `336b416`, also on `main`.

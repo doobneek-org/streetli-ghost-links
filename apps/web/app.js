@@ -339,7 +339,11 @@
     else {
       const searchUrl = new URL('https://www.google.com/search');
       const organization = item.organization.name === 'Historical provider (identity unavailable)' ? '' : ` "${item.organization.name}"`;
-      searchUrl.searchParams.set('q', `"${item.identifier.value}"${organization}`);
+      // Phone numbers are stored in E.164, which directories never print; the shared helper
+      // searches the printed variants instead. Falls back if search-query.js did not load.
+      searchUrl.searchParams.set('q', window.ghostLinksSearchQuery
+        ? window.ghostLinksSearchQuery.build(item)
+        : `"${item.identifier.value}"${organization}`);
       webSearch.href = searchUrl.href; webSearch.target = '_blank'; webSearch.rel = 'noopener noreferrer';
     }
     links.append(webSearch);
