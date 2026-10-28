@@ -4,7 +4,9 @@ import { PUBLIC_CASES_URL } from '../../packages/contracts/case-source.mjs';
 import { validateCaseFeed } from '../../packages/contracts/cases.mjs';
 import { buildDiscoveryPlan } from '../../packages/contracts/discovery-plan.mjs';
 import { buildReportingPlan } from '../agent/reporting-routes.mjs';
+import { buildLocationDetailUrl, projectLocationDetail } from '../../packages/contracts/location-detail.mjs';
 
+const MAX_LOCATION_BYTES = 8 * 1024 * 1024;
 const MAX_FEED_BYTES = 16 * 1024 * 1024;
 const MAX_REQUEST_BYTES = 4096;
 const routes = new Map([
@@ -91,6 +93,22 @@ export function createCloudflareWorker({ fetchImpl = fetch, now = Date.now, repo
     })();
     try { return await pending; } finally { pending = null; }
   }
+  // Reads the public, unauthenticated Streetli location projection for one case the feed
+  // already lists. The id always comes from the feed, never from the caller, so this cannot
+  // be steered at an arbitrary host, and no caller credential is forwarded upstream.
+  async function locationDetail(item) {
+    const target = buildLocationDetailUrl(item.location?.id);
+    if (!target) throw safeError('location_unavailable', 404);
+    let response;
+    try { response = await fetchImpl(target, { headers: { Accept: 'application/json' }, redirect: NO_REDIRECT, signal: AbortSignal.timeout(30000) }); }
+    catch { throw safeError('location_source_unavailable'); }
+    if (redirected(response) || !response.ok) throw safeError('location_source_unavailable');
+    const body = await boundedText(response.body, MAX_LOCATION_BYTES, 'location_source_too_large');
+    let detail;
+    try { detail = projectLocationDetail(JSON.parse(body)); } catch { throw safeError('location_source_invalid_response', 502); }
+    if (!detail) throw safeError('location_source_invalid_response', 502);
+    return { caseId: item.id, detail };
+  }
   async function proxy(request, url, environment, backend) {
     if (request.method === 'POST') {
       if (!token(environment.MAINTAINER_TOKEN)) return json({ error: 'maintainer_access_not_configured' }, 503);
@@ -150,6 +168,12 @@ export function createCloudflareWorker({ fetchImpl = fetch, now = Date.now, repo
           const selected = (await getCases()).cases.find(item => item.id === id);
           return selected ? json(await reporting(selected)) : json({ error: 'case_not_found' }, 404);
         }
+        if (url.pathname === '/api/location' && request.method === 'GET') {
+          const id = validCaseQuery(url);
+          if (!id) return json({ error: 'invalid_case_request' }, 400);
+          const selected = (await getCases()).cases.find(item => item.id === id);
+          return selected ? json(await locationDetail(selected)) : json({ error: 'case_not_found' }, 404);
+        }
         if (routes.has(url.pathname)) {
           if (!routes.get(url.pathname).includes(request.method)) return json({ error: 'method_not_allowed' }, 405);
           if (url.pathname === '/api/research' ? !validCaseQuery(url) : Boolean(url.search)) return json({ error: 'invalid_request' }, 400);
@@ -163,9 +187,11 @@ export function createCloudflareWorker({ fetchImpl = fetch, now = Date.now, repo
           }
           return json({ error: 'research_backend_unavailable', researchBackendAvailable: false }, 503);
         }
-        return json({ error: ['/health', '/api/cases', '/api/refresh', '/api/reporting'].includes(url.pathname) ? 'method_not_allowed' : 'not_found' }, ['/health', '/api/cases', '/api/refresh', '/api/reporting'].includes(url.pathname) ? 405 : 404);
+        const known = ['/health', '/api/cases', '/api/refresh', '/api/reporting', '/api/location'].includes(url.pathname);
+        return json({ error: known ? 'method_not_allowed' : 'not_found' }, known ? 405 : 404);
       } catch (error) {
-        const allowed = ['case_source_unavailable', 'case_source_too_large', 'case_source_invalid_response', 'request_too_large', 'research_backend_configuration_invalid'];
+        const allowed = ['case_source_unavailable', 'case_source_too_large', 'case_source_invalid_response', 'request_too_large', 'research_backend_configuration_invalid',
+          'location_unavailable', 'location_source_unavailable', 'location_source_too_large', 'location_source_invalid_response'];
         return json({ error: allowed.includes(error.code) ? error.code : 'case_data_unavailable' }, error.status || 503);
       }
     },

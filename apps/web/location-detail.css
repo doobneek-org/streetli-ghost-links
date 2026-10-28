@@ -1,0 +1,36 @@
+/* Inline Streetli location detail (Ivan). Reuses the tokens defined in styles.css. */
+.location-dialog{width:min(640px,calc(100vw - 32px));max-height:min(82vh,760px);padding:0;border:1px solid var(--line);border-radius:11px;background:var(--surface);color:var(--ink);box-shadow:var(--shadow);overflow:hidden}
+.location-dialog::backdrop{background:#1f302966}
+.location-dialog[open]{display:flex;flex-direction:column}
+
+.location-dialog-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:20px 22px 14px;border-bottom:1px solid var(--line)}
+.location-dialog-heading{font-size:19px;font-weight:550;letter-spacing:-.5px;margin:0;line-height:1.3;overflow-wrap:anywhere}
+.location-dialog-close{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);border-radius:7px;width:30px;height:30px;font-size:13px;line-height:1;color:var(--secondary);display:inline-flex;align-items:center;justify-content:center}
+.location-dialog-close:hover{border-color:#aeba9e;background:var(--soft-green);color:var(--ink)}
+
+.location-dialog-body{padding:18px 22px 22px;overflow-y:auto;display:grid;gap:14px;align-content:start}
+.location-status{font-size:11px;color:var(--secondary);margin:0}
+.location-status-error{color:var(--red)}
+
+.location-flag{font-size:11px;line-height:1.6;margin:0;padding:10px 12px;border-radius:5px}
+.location-flag-stale{color:var(--amber);background:var(--soft-amber)}
+.location-flag-closed{color:var(--red);background:var(--soft-red)}
+
+.location-facts{display:grid;grid-template-columns:118px minmax(0,1fr);gap:10px 14px;font-size:11px;margin:0}
+.location-facts dt{color:var(--secondary)}
+.location-facts dd{margin:0;overflow-wrap:anywhere}
+
+.location-website{font-size:11px;color:var(--green);text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere;justify-self:start}
+
+.location-services-heading{font-size:12px;font-weight:600;margin:4px 0 0;padding-top:14px;border-top:1px solid var(--line)}
+.location-services{list-style:none;margin:0;padding:0;display:grid;gap:11px}
+.location-service{border:1px solid var(--line);border-radius:7px;background:#f5f6ef;padding:11px 12px;display:grid;gap:5px}
+.location-service-name{font-size:12px;font-weight:600;overflow-wrap:anywhere}
+.location-service-text{font-size:11px;color:var(--secondary);line-height:1.65;margin:0;overflow-wrap:anywhere}
+
+@media(max-width:690px){
+  .location-dialog{width:calc(100vw - 20px);max-height:88vh}
+  .location-dialog-header{padding:16px 16px 12px}
+  .location-dialog-body{padding:14px 16px 18px}
+  .location-facts{grid-template-columns:96px minmax(0,1fr);gap:9px 11px}
+}
