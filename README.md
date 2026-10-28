@@ -19,6 +19,12 @@ Open the dev app at <http://127.0.0.1:4317/>. The case API is <http://127.0.0.1:
 
 The server loads ignored local `.env` settings without overriding existing process variables. See [local data setup](docs/local-dev.md). A configured live source failure stays an error; the app never silently substitutes fictional results.
 
+With a live source configured, `npm run precompute` automatically prepares a
+bounded, deduplicated external-discovery job plan under ignored `data/`.
+`npm run precompute -- --watch` refreshes the plan every five minutes. It makes
+no sponsor requests itself; Timothy's provider worker consumes the jobs and
+persists real results. See [automatic discovery](docs/external-discovery.md).
+
 ## Project layout
 
 | Path | Purpose |
