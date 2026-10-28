@@ -1,0 +1,13 @@
+{
+  "name": "streetli-ghost-links",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Open-source collaboration starter for finding stale community-service identifiers.",
+  "license": "MIT",
+  "engines": { "node": ">=20.19" },
+  "scripts": {
+    "start": "node apps/agent/fixture-server.mjs",
+    "test": "node --test"
+  }
+}

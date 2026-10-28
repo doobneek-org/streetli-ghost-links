@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "mode": "fixture",
+  "generatedAt": "2026-10-28T18:00:00Z",
+  "cases": [
+    {
+      "id": "demo-website-001",
+      "organization": { "name": "Example Harbor Pantry (fictional)", "locality": "Example City" },
+      "identifier": { "kind": "website", "value": "https://harbor-pantry.example/" },
+      "internal": {
+        "state": "removed",
+        "reasonCode": "website_repurposed",
+        "correctedAt": "2026-10-27T18:00:00Z",
+        "source": "confirmed_correction",
+        "coverage": "retained_records_only"
+      },
+      "replacement": null,
+      "externalReferences": [],
+      "reviewState": "approved_for_research"
+    },
+    {
+      "id": "demo-website-002",
+      "organization": { "name": "Example Lantern Services (fictional)", "locality": "Example City" },
+      "identifier": { "kind": "website", "value": "https://lantern-services.example/old-intake" },
+      "internal": {
+        "state": "replaced",
+        "reasonCode": "website_not_found",
+        "correctedAt": "2026-10-26T15:00:00Z",
+        "source": "retained_ledger",
+        "coverage": "retained_records_only"
+      },
+      "replacement": { "value": "https://lantern-services.example/intake" },
+      "externalReferences": [],
+      "reviewState": "review_required"
+    }
+  ]
+}
