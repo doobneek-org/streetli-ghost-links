@@ -8,6 +8,7 @@
   "engines": { "node": ">=20.19" },
   "scripts": {
     "start": "node apps/agent/fixture-server.mjs",
+    "dev": "node --watch apps/agent/fixture-server.mjs",
     "test": "node --test"
   }
 }

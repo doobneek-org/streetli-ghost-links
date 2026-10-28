@@ -2,7 +2,7 @@
 
 A collaboration starter for finding outdated community-service contact information that remains online after it was removed or replaced in Streetli.
 
-The intended flow is: ask how to improve the social safety net, choose an eligible correction case, research public references to the old identifier, and show evidence with instructions for requesting a correction. This repository currently provides a synthetic case contract and fixture API. It is not a finished agent, live scanner, or reporting service. The private Streetli adapter is not implemented here.
+The dev app now loads historical phone, email, and website cases, supports prompt/text search and state/type filters, and shows record details with reporting guidance. It reads fictional examples by default or an approved private Streetli projection when configured. Website reporting guidance includes a passive current-registrar lookup. Autonomous external-reference discovery and sponsor integrations remain under development; this app does not submit reports or change Streetli.
 
 ## Run locally
 
@@ -15,16 +15,16 @@ npm test
 npm start
 ```
 
-The fixture API is available at <http://127.0.0.1:4317/api/cases>. `npm start` starts the local fixture server; it does not start a completed dashboard or query Streetli production. `npm test` checks case validation and server behavior.
+Open the dev app at <http://127.0.0.1:4317/>. The case API is <http://127.0.0.1:4317/api/cases>. Use `npm run dev` for the Node watch process; refresh the page after frontend edits. No install or build is needed. `npm test` checks the case contract, local server, and reporting-route behavior.
 
-The starter reads `PORT` from the process environment; it does not load `.env` automatically. `.env.example` documents planned integration settings. Add explicit server-side environment loading when implementing the integrations.
+The server loads ignored local `.env` settings without overriding existing process variables. See [local data setup](docs/local-dev.md). A configured live source failure stays an error; the app never silently substitutes fictional results.
 
 ## Project layout
 
 | Path | Purpose |
 | --- | --- |
-| `apps/web/` | Dashboard implementation area |
-| `apps/agent/` | Public-web research and sponsor integration implementation area |
+| `apps/web/` | Runnable prompt-first historical case browser |
+| `apps/agent/` | Local server, private-feed consumer, reporting routes, future sponsor integrations |
 | `packages/contracts/` | Versioned case contract and validation |
 | `fixtures/` | Synthetic demo cases |
 | `docs/collaboration.md` | Ownership, integration boundary, and delivery checklist |
@@ -40,7 +40,7 @@ Both branches target the same shared repository and case contract. Start against
 
 The public repository contains fresh code and synthetic examples. Fixtures use fictional names and reserved example domains; they are not reports about real providers. Do not commit Streetli source modules, raw logs, private notes, contact histories, source snapshots, credentials, or production exports.
 
-Future live integration must use a narrow, approved, read-only projection. Its endpoint token belongs only in server configuration and must not grant Firebase, database, or admin access. Sponsor API keys also stay in a server-only `.env`; never put them in browser bundles, shared screenshots, commits, or public issue text. `.env.example` documents variable names without values.
+Live integration uses a narrow, read-only projection. Its endpoint token belongs only in server configuration and must not grant Firebase, database, or admin access. Sponsor API keys also stay in a server-only `.env`; never put them in browser bundles, shared screenshots, commits, or public issue text. `.env.example` documents variable names without values. Real case data stays in process memory and is not committed to this repository.
 
 Keep evidence states explicit: an old identifier retained in a ledger is not automatically a confirmed correction, a public search result is not proof of current external use, and a submitted correction is not proof that a platform accepted it. The MVP should prepare evidence and correction instructions; it must not automatically send messages or submit reports.
 

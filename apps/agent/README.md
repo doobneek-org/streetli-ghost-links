@@ -1,6 +1,6 @@
 # Research agent workspace
 
-This directory is reserved for the new public-web research implementation. The collaboration starter has a working synthetic case API, not completed agents or live Streetli scanning.
+This directory contains the local case server, private-feed consumer, and reporting-route lookup. It serves a working historical-case browser using fixtures or a configured private projection. You.com/CrewAI/Parasail/One agents and automatic external-reference verification remain integration work; loading retained records does not run a new Streetli scan.
 
 **Owner:** TimothyMSSTATE, branch `codex/dashboard-agent`.
 
@@ -31,7 +31,7 @@ Preserve `internal.source`: `retained_ledger` is less conclusive than `confirmed
 
 ## Runtime and secrets
 
-The root starter uses Node.js 20.19+ with no install step: run `npm start` for fixtures and `npm test` for contract/server checks. If agent dependencies or another runtime are added, document their exact setup here; do not imply the current Node tests verify an unimplemented agent.
+The root app uses Node.js 20.19+ with no install step: run `npm run dev` and `npm test`. It loads the ignored server-only `.env`; with `STREETLI_CASES_URL` configured it uses that private source, otherwise fixtures. See [local dev setup](../../docs/local-dev.md). If agent dependencies or another runtime are added, document their exact setup here; current Node tests do not verify an unimplemented research agent.
 
 All API keys live server-side in a local `.env`; commit names and instructions only in `.env.example`. A future Streetli token may access only an approved read projection. Never request or use Firebase/admin credentials, raw logs, private notes, email histories, private source modules, or unreviewed production exports. Do not log authorization headers or pass secrets to prompts.
 

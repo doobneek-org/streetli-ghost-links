@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Review historical Streetli contact flags and find the next useful data correction.">
+  <title>Ghost Links · Streetli data review</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#results">Skip to records</a>
+  <header class="app-header">
+    <a class="brand" href="/" aria-label="Ghost Links home"><span class="brand-mark" aria-hidden="true">g</span><span>ghost links<span class="brand-byline">a Streetli experiment</span></span></a>
+    <div class="header-status"><span class="status-dot" aria-hidden="true"></span><span id="source-label">Connecting to source</span><span class="dev-label">Local dev</span></div>
+  </header>
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="eyebrow"><span aria-hidden="true">✳</span> Small corrections. Better connections.</div>
+      <h1 id="hero-title">How can I make the<br class="desktop-break"> social safety net better?</h1>
+      <p class="hero-description">Start with the information that needs a second look. Explore phone numbers, emails, and websites previously flagged in Streetli.</p>
+      <form id="search-form" class="search-form" role="search">
+        <label class="sr-only" for="search-input">Search historical identifier records</label>
+        <span class="search-symbol" aria-hidden="true">⌕</span>
+        <input id="search-input" name="query" type="search" autocomplete="off" placeholder="Find broken websites, bad numbers, or an organization…">
+        <button class="primary-button search-submit" type="submit">Find records <span aria-hidden="true">↗</span></button>
+      </form>
+      <div class="example-prompts" aria-label="Suggested searches"><span>Try</span><button type="button" data-prompt="Find broken websites">Find broken websites</button><button type="button" data-prompt="Show bad phone numbers">Show bad phone numbers</button><button type="button" data-prompt="Find bad email addresses">Find bad email addresses</button></div>
+      <p class="search-note">Searches the loaded records. External web verification runs separately.</p>
+    </section>
+
+    <section class="workbench" id="results" aria-labelledby="results-title">
+      <div class="workbench-heading"><div><div class="eyebrow">The review queue</div><h2 id="results-title">A place to start fixing things.</h2></div><button id="refresh-button" class="secondary-button" type="button"><span aria-hidden="true">↻</span> Refresh records</button></div>
+      <div id="source-banner" class="source-banner" role="status" aria-live="polite"><span class="loading-pulse" aria-hidden="true"></span><span id="load-status">Loading historical records from the configured source…</span></div>
+      <div class="history-filters" role="group" aria-label="Filter historical record state"><button type="button" data-history-state="all" aria-pressed="true">All history <span data-state-count="all">—</span></button><button type="button" data-history-state="removed" aria-pressed="false">Removed <span data-state-count="removed">—</span></button><button type="button" data-history-state="flagged" aria-pressed="false">Flagged <span data-state-count="flagged">—</span></button></div>
+      <div class="queue-toolbar"><div class="type-filters" role="group" aria-label="Filter identifier type"><button type="button" data-kind="all" aria-pressed="true">All records <span data-count="all">—</span></button><button type="button" data-kind="website" aria-pressed="false">Websites <span data-count="website">—</span></button><button type="button" data-kind="phone" aria-pressed="false">Phone numbers <span data-count="phone">—</span></button><button type="button" data-kind="email" aria-pressed="false">Emails <span data-count="email">—</span></button></div><p id="result-count" class="result-count" aria-live="polite">Waiting for records</p></div>
+      <div class="queue-layout">
+        <div class="record-column"><div id="record-list" class="record-list" aria-label="Historical identifier records"></div><div id="empty-state" class="empty-state" hidden><span class="empty-icon" aria-hidden="true">⌕</span><h3 id="empty-title">No matching records</h3><p id="empty-description">Try another organization, identifier, or record type.</p></div><button id="show-more" class="secondary-button show-more" type="button" hidden>Show more records</button></div>
+        <aside id="case-detail" class="case-detail" aria-label="Selected record details"><div class="detail-placeholder"><span class="detail-placeholder-mark" aria-hidden="true">↖</span><h3>Your next useful correction starts here.</h3><p>Select a record to review its history and see the next steps.</p></div></aside>
+      </div>
+      <p class="coverage-note" id="coverage-note">Coverage: retained records only. Past flags do not establish a current error.</p>
+    </section>
+  </main>
+  <footer class="app-footer"><span class="footer-wordmark">ghost links</span><span>Read-only review · external verification not run.</span><a href="https://github.com/doobneek-org/streetli-ghost-links" target="_blank" rel="noopener noreferrer">Open source <span aria-hidden="true">↗</span></a></footer>
+</body>
+</html>

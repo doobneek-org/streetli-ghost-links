@@ -4,11 +4,30 @@ Paste the following into the coding agent working on this repository.
 
 ---
 
-Build the public Ghost Links dashboard and research runtime in
+Continue the public Ghost Links dashboard and research runtime in
 `https://github.com/doobneek-org/streetli-ghost-links` on
 `codex/dashboard-agent`. Read `AGENTS.md`, `README.md`, and
 `docs/collaboration.md`. Fetch and merge `origin/main` before starting; preserve
-your existing work and do not reset the branch.
+your existing work and do not reset the branch. The historical-case frontend
+already works: extend it rather than building a second app.
+
+## What is delivered
+
+- Buildless frontend and Node dev server at `http://127.0.0.1:4317/`.
+- Prompt/text search, website/phone/email filters, Removed/Flagged/All history,
+  record details, exact authenticated Streetli links where available, pagination,
+  explicit fixture/live/error states, and refresh.
+- Server-side private source consumer with a dedicated token; fictional fixtures
+  work without credentials. The live private bridge is outside this repository.
+- Google/Findhelp reporting guidance and passive registrar RDAP lookup, including
+  Name.com/GoDaddy routes when identified. No reports are sent.
+- Executable v1/v2 contracts and tests. `npm test` passes 29 checks at handoff.
+
+The owner's current local feed contains retained historical cases; it is not a
+public dataset or a hosted teammate endpoint. A teammate's `localhost:4318` is
+their own machine. Use fixtures until Ivan supplies an approved reachable feed.
+All imported real cases are `review_required`; Ivan selects and approves real
+research cases. Do not silently promote flags into confirmed findings.
 
 Ivan owns the private Streetli case exporter, case-selection rules, prompt
 engineering, and evaluation examples. You own frontend design, runtime wiring,
@@ -18,13 +37,15 @@ in UI components or scattering them through tool clients.
 
 ## Build in this order
 
-1. Build a prompt-first interface against the existing fixture API. Suggested
+1. Extend the existing prompt-first interface against the fixture/live case API. Suggested
    prompt: "How can I make the social safety net better?" The first result is a
-   provider record with its former website, internal correction, reason, and
-   provenance. The UI must identify fixtures and review-required cases.
-2. Add a server-only case source adapter. Default to fixtures; future live mode
+   provider record with its website, phone or email identifier and recorded
+   flag/removal provenance. Preserve that distinction: not every case is a
+   confirmed correction. The UI must identify fixtures and review-required cases.
+2. Use the existing server-only case source adapter. Default to fixtures; live mode
    reads `STREETLI_CASES_URL` with `STREETLI_CASES_TOKEN`. Validate the response
-   using `packages/contracts/cases.mjs`. Keep the v1 contract stable; propose
+   using `packages/contracts/cases.mjs`. Support v1 fixtures and v2 historical
+   cases; keep that contract stable and propose
    changes to Ivan before changing producers or consumers. Do not request
    Firebase/admin credentials or inspect the private Streetli repository.
 3. Connect You.com Search and Contents. Research an approved case's exact former
@@ -37,7 +58,8 @@ in UI components or scattering them through tool clients.
    Parasail supplying model inference. Show actual tool events, errors, and
    unknown outcomes. The product must not claim simulated progress or results
    are live. Use the agreed prompt templates and output schemas.
-5. Add a cited correction preview and destination-specific instructions. Wire
+5. Connect cited live evidence and a correction preview to the existing
+   destination-specific reporting panel. Wire
    One to a deliberate reviewer-controlled draft or review ticket in an agreed
    team workspace. External reports or messages are not authorized by this
    handoff. Never treat a draft/submission receipt as a verified correction.
@@ -74,3 +96,21 @@ turnover, catalogue-wide scanning, automatic takedowns, and production edits.
 Open a pull request into `main` with setup instructions, checks, and an accurate
 list of working/pending integrations. Avoid touching `prompts/` or the contract
 without coordination; do not publish raw logs or real-data exports.
+
+## Ownership and checkpoints
+
+Your files: `apps/web/`, the public runtime and new provider clients under
+`apps/agent/`, and their tests. Coordinate dependency changes in `package.json`.
+Ivan's files: `prompts/`, `packages/contracts/`, evaluation criteria, reviewed case
+selection, and the private Streetli adapter in its separate repository.
+
+First checkpoint: prove a harmless live You.com Search/Contents request, a
+Parasail inference request through CrewAI, and a One connection discovery/read
+without sending a message. Record configuration failures accurately and let the
+account owner resolve sign-in or credit redemption. Then connect one
+owner-approved real case end to end.
+
+Commit each working increment on `codex/dashboard-agent`, push that branch and
+open/update a pull request into `main`. After the other side's PR merges, fetch
+and merge `origin/main` into your own branch. Never force-push, reset away local
+work, push to the other person's branch, or auto-deploy Streetli production.

@@ -19,9 +19,44 @@ ownership is documented in [prompts/README.md](../prompts/README.md).
 
 Work on these branches and open pull requests into the default branch. Keep changes small enough for the other person to review. Contract changes affect both workstreams: agree on the shape first, update validation and fixtures, and then update consumers. No contributor needs Streetli Firebase credentials or raw logs to build the dashboard against fixtures.
 
+## Daily sync loop
+
+Each person keeps a separate clone and works on their own branch. Before syncing,
+commit completed local changes, or preserve unfinished changes in a named stash;
+never discard them to make a pull succeed. On a clean working tree:
+
+```sh
+git fetch origin
+git switch codex/dashboard-agent  # Timothy; Ivan uses codex/streetli-adapter
+git merge origin/main
+```
+
+Work on one bounded task, run the relevant checks, commit and push your own
+branch. Open a pull request into `main`; after it merges, the other person repeats
+the fetch/merge step. Do not push back and forth to a single shared feature
+branch, force-push, or reset away the other agent's work. Resolve any conflict
+with the file owner before merging.
+
+Timothy owns the frontend, public runtime, provider clients and their tests.
+Ivan owns `prompts/`, `packages/contracts/`, case approval/evaluation rules, and
+the private source adapter. Shared contract or dependency changes need a brief
+coordination note in the pull request. Every handoff states what works, what is
+pending, the relevant commit/PR, and which files the next agent should change.
+
+Timothy's next work is sponsor authentication/configuration checks and actual
+external-reference discovery. Ivan's next work is choosing owner-approved real
+cases, supplying an approved teammate-accessible feed, and writing prompt and
+evaluation templates. The local feed is already connected on Ivan's machine;
+the same localhost address does not connect another machine to it.
+
 ## Current working surface
 
-With Node.js 20.19+, run `npm test` and `npm start` from the repository root. No install is needed for this starter. The local API is `http://127.0.0.1:4317/api/cases` and returns fixture mode only. A live private adapter and completed research agents are not included.
+With Node.js 20.19+, run `npm test` and `npm run dev` from the repository root.
+Open `http://127.0.0.1:4317/`. No install is needed. The API reads fixtures or a
+configured approved private case feed; the private local bridge itself remains
+in the owner's separate checkout. See [local dev setup](local-dev.md). The
+frontend and reporting routes work; automatic sponsor-powered research does not
+yet run. Extend this interface rather than rebuild a second frontend.
 
 The v1 envelope is `{ schemaVersion: 1, mode: "fixture" | "live", generatedAt, cases }`. Each case carries:
 
@@ -34,12 +69,18 @@ The v1 envelope is `{ schemaVersion: 1, mode: "fixture" | "live", generatedAt, c
 
 Use the executable contract in `packages/contracts/` as the validation authority. A case with `source: "retained_ledger"` must retain that uncertainty: removal/retirement does not by itself establish a verified mistake or its cause. Coverage means recoverable retained records, not every correction ever made.
 
+Live schema v2 also supports `internal.state: "flagged"`, a `flaggedAt` timestamp,
+nullable correction dates, an exact authenticated `location` link, and envelope
+coverage counts. Bad-format phone/email identifiers are plain bounded text.
+Case counts can exceed distinct identifier counts when several branches shared
+a contact. The v1 fixture contract remains supported.
+
 ## Integration sequence
 
-1. Timothy builds a case list, detail view, prompt entry, and reporting-instructions panel against the synthetic API.
+1. Timothy extends the delivered case list, detail view, prompt entry, and reporting panel with actual sponsor-powered research.
 2. The agent selects only cases approved for research, searches the exact old identifier, and verifies whether a result actually refers to the same provider and branch.
 3. Research results show their source URL, observation time, relevant evidence, and uncertainty. Search snippets alone are leads. Missing search results do not establish that an external listing was corrected.
-4. Ivan implements the private projection separately, with explicit field allowlisting and provenance. Live wiring follows review of that projection; browser code receives no token.
+4. Ivan maintains the existing private local projection, explicit field allowlisting and provenance; he supplies approved cases and a suitable teammate feed. Browser code receives no source token.
 5. Both contributors test the complete fixture demo and label which integrations are implemented, simulated, or pending.
 
 Draft correction messages and inline platform instructions are sufficient for the first demo. Sending messages, changing provider records, or submitting external reports requires a separately authorized action.

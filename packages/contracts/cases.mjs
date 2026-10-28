@@ -26,34 +26,59 @@ function identifierValue(kind, value, label) {
   if (kind === 'phone' && !/^\+[1-9]\d{6,14}(?:;ext=\d{1,10})?$/.test(value)) fail(`${label} must be an international phone number`);
 }
 export function validateCaseFeed(feed) {
-  object(feed, ['schemaVersion', 'mode', 'generatedAt', 'cases'], 'feed');
-  if (feed.schemaVersion !== 1) fail('schemaVersion must be 1');
+  const version = feed?.schemaVersion;
+  if (![1, 2].includes(version)) fail('schemaVersion must be 1 or 2');
+  object(feed, ['schemaVersion', 'mode', 'generatedAt', 'cases', ...(version === 2 ? ['coverage'] : [])], 'feed');
   one(feed.mode, ['fixture', 'live'], 'mode');
   timestamp(feed.generatedAt, 'generatedAt');
-  if (!Array.isArray(feed.cases) || feed.cases.length > 100) fail('cases must be an array of at most 100 records');
+  if (!Array.isArray(feed.cases) || feed.cases.length > (version === 2 ? 10000 : 100)) fail('cases must be a bounded array');
+  if (version === 2) {
+    object(feed.coverage, ['scope', 'sourceCounts', 'returned', 'omitted'], 'coverage');
+    one(feed.coverage.scope, ['retained_records_only'], 'coverage.scope');
+    object(feed.coverage.sourceCounts, ['website', 'phone', 'email'], 'coverage.sourceCounts');
+    for (const value of [...Object.values(feed.coverage.sourceCounts), feed.coverage.returned, feed.coverage.omitted]) {
+      if (!Number.isSafeInteger(value) || value < 0) fail('coverage counts must be nonnegative integers');
+    }
+    if (feed.coverage.returned !== feed.cases.length) fail('coverage.returned must match the case count');
+  }
   const ids = new Set();
   for (const item of feed.cases) {
-    object(item, ['id', 'organization', 'identifier', 'internal', 'replacement', 'externalReferences', 'reviewState'], 'case');
-    text(item.id, 'id', 100);
+    object(item, ['id', 'organization', 'identifier', 'internal', 'replacement', 'externalReferences', 'reviewState', ...(version === 2 ? ['location'] : [])], 'case');
+    text(item.id, 'id', version === 2 ? 200 : 100);
     if (!/^[a-zA-Z0-9_-]+$/.test(item.id) || ids.has(item.id)) fail('case IDs must be unique stable identifiers');
     ids.add(item.id);
     object(item.organization, ['name', 'locality'], 'organization');
     text(item.organization.name, 'organization.name', 200); text(item.organization.locality, 'organization.locality', 160);
     object(item.identifier, ['kind', 'value'], 'identifier');
     one(item.identifier.kind, ['website', 'phone', 'email'], 'identifier.kind');
-    identifierValue(item.identifier.kind, item.identifier.value, 'identifier.value');
-    object(item.internal, ['state', 'reasonCode', 'correctedAt', 'source', 'coverage'], 'internal');
-    one(item.internal.state, ['removed', 'replaced'], 'internal.state');
+    // Bad-format historical phone/email identifiers remain bounded text in v2.
+    // Consumers must not infer safe tel/mailto/website action URLs from them.
+    if (version === 2) text(item.identifier.value, 'identifier.value', 2048);
+    else identifierValue(item.identifier.kind, item.identifier.value, 'identifier.value');
+    object(item.internal, ['state', 'reasonCode', 'correctedAt', 'source', 'coverage', ...(version === 2 ? ['flaggedAt'] : [])], 'internal');
+    one(item.internal.state, version === 2 ? ['flagged', 'removed', 'replaced'] : ['removed', 'replaced'], 'internal.state');
     text(item.internal.reasonCode, 'internal.reasonCode', 80);
     if (!/^[a-z][a-z0-9_]*$/.test(item.internal.reasonCode)) fail('reasonCode must be a code');
-    timestamp(item.internal.correctedAt, 'internal.correctedAt');
+    if (version === 1 || item.internal.correctedAt !== null) timestamp(item.internal.correctedAt, 'internal.correctedAt');
+    if (version === 2 && item.internal.flaggedAt !== null) timestamp(item.internal.flaggedAt, 'internal.flaggedAt');
+    if (item.internal.state === 'flagged' && item.internal.correctedAt !== null) fail('flagged contacts cannot assert a correction date');
     one(item.internal.source, ['confirmed_correction', 'retained_ledger'], 'internal.source');
     one(item.internal.coverage, ['retained_records_only'], 'internal.coverage');
     if (item.internal.state === 'replaced') {
       object(item.replacement, ['value'], 'replacement');
       identifierValue(item.identifier.kind, item.replacement.value, 'replacement.value');
-    } else if (item.replacement !== null) fail('removed identifiers require replacement:null');
+    } else if (item.replacement !== null) fail('unreplaced identifiers require replacement:null');
     one(item.reviewState, ['review_required', 'approved_for_research'], 'reviewState');
+    if (version === 2 && item.location !== null) {
+      object(item.location, ['id', 'url'], 'location');
+      text(item.location.id, 'location.id', 120);
+      if (!/^[A-Za-z0-9_-]+$/.test(item.location.id)) fail('location.id must be stable');
+      webUrl(item.location.url, 'location.url');
+      const locationUrl = new URL(item.location.url);
+      if (locationUrl.protocol !== 'https:' || locationUrl.hostname !== 'gogetta.nyc'
+        || !locationUrl.pathname.startsWith(`/team/location/${item.location.id}/`)
+        || locationUrl.search || locationUrl.hash || locationUrl.port) fail('location.url must target the matching authenticated Sheets entry');
+    }
     if (!Array.isArray(item.externalReferences) || item.externalReferences.length > 20) fail('externalReferences must be bounded');
     for (const reference of item.externalReferences) {
       object(reference, ['url', 'observedAt', 'state', 'quote', 'reportState'], 'externalReference');
