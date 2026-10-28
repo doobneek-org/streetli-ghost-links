@@ -31,3 +31,5 @@ reviewed, server-to-server case projection.
 - Commit and push only your own feature branch. Share through PRs into main;
   fetch and merge origin/main after integration. Never force-push, discard
   another agent's work, or write to the other person's feature branch.
+- Agent-to-agent handoffs: follow docs/handoffs/README.md at session start and
+  write to your own log there before ending a session or updating a PR.
