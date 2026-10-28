@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { validateCaseFeed } from '../../packages/contracts/cases.mjs';
 import { createResearchRunner, manualTestCase } from './research-route.mjs';
-import { createReviewStore, parseDecision } from './review-actions.mjs';
+import { createReviewStore, leaderboard, parseDecision } from './review-actions.mjs';
 import { createDiscoveryRunner, runPython } from './discovery-runner.mjs';
 
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
@@ -234,14 +234,16 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
       // Reviewer decisions. Local notes only: they never edit Streetli or mark a correction verified.
       if (path === '/api/review-actions' && request.method === 'GET') {
         const feedNow = lastFeed || validateCaseFeed(await getCases());
-        return send(200, { mode: feedNow.mode, actions: await reviews.list(feedNow.mode) });
+        const actions = await reviews.list(feedNow.mode);
+        return send(200, { mode: feedNow.mode, actions, leaderboard: leaderboard(actions) });
       }
       if (path === '/api/review-actions' && request.method === 'POST') {
         const decision = parseDecision(await readJsonBody(request));
         if (!decision) return send(400, { error: 'invalid_review_decision' });
         const feedNow = lastFeed || validateCaseFeed(await getCases());
         if (!feedNow.cases.some(item => item.id === decision.caseId)) return send(404, { error: 'case_not_found' });
-        return send(200, { caseId: decision.caseId, action: await reviews.set(feedNow.mode, decision.caseId, decision.decision, decision.note) });
+        const action = await reviews.set(feedNow.mode, decision.caseId, decision.decision, decision.note, decision.by);
+        return send(200, { caseId: decision.caseId, action, leaderboard: leaderboard(await reviews.list(feedNow.mode)) });
       }
       // Event check: which services near an event can still help, from public sources.
       if (path === '/api/event-check' && request.method === 'POST') {

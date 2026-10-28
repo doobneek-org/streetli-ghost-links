@@ -158,3 +158,11 @@ test('found services are marked at risk only when they match a live Streetli fla
   assert.equal(marked.checks[1].state, 'listed');
   assert.equal(annotateRisk([service], { ...feed, mode: 'fixture' })[0].checks[0].state, 'listed');
 });
+
+test('leaderboard ranks reviewers by points from recorded decisions', async () => {
+  const { leaderboard, parseDecision } = await import('../apps/agent/review-actions.mjs');
+  const board = leaderboard({ a: { decision: 'resolved', by: 'Vlad' }, b: { decision: 'resolved', by: 'Vlad' }, c: { decision: 'not_an_issue', by: 'Mina' }, d: { decision: 'follow_up' } });
+  assert.deepEqual(board.map(entry => [entry.name, entry.points]), [['Vlad', 20], ['Mina', 3], ['Anonymous', 1]]);
+  assert.equal(parseDecision({ caseId: 'x', decision: 'resolved', by: '<script>' }), null);
+  assert.equal(parseDecision({ caseId: 'x', decision: 'resolved', by: 'Van Helsing' }).by, 'Van Helsing');
+});

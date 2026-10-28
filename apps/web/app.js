@@ -34,6 +34,47 @@
   let spooky = false;
   try { spooky = localStorage.getItem('ghost-links-halloween') === 'on'; } catch { spooky = false; }
   const t = (normal, haunted) => spooky ? haunted : normal;
+  let hunterName = '';
+  try { hunterName = localStorage.getItem('ghost-links-hunter') || ''; } catch { hunterName = ''; }
+  let board = [];
+  const rankTitle = points => points >= 100 ? '⭐ Spectral Superhero' : points >= 30 ? '🦸 Poltergeist Wrangler' : points >= 10 ? '👻 Ghost Buster' : '🕯 Rookie Hunter';
+
+  // Leaderboard: Halloween mode only. Counts reviewer decisions recorded in this app.
+  function renderLeaderboard() {
+    const section = $('leaderboard');
+    if (!section) return;
+    section.hidden = !spooky;
+    if (!spooky) return;
+    const title = make('h3', 'leaderboard-title', '🏆 Leading Ghost Busters');
+    title.id = 'leaderboard-title';
+    const nameRow = make('form', 'hunter-form');
+    const name = make('input', 'decision-note');
+    name.type = 'text'; name.maxLength = 40; name.value = hunterName; name.placeholder = 'Your ghost-hunter name';
+    name.setAttribute('aria-label', 'Your ghost-hunter name');
+    const save = make('button', 'secondary-button', hunterName ? 'Rename' : 'Join the hunt'); save.type = 'submit';
+    nameRow.append(name, save);
+    nameRow.addEventListener('submit', event => {
+      event.preventDefault();
+      const value = String(name.value || '').trim().slice(0, 40);
+      if (value && !/^[\p{L}\p{N} ._'-]+$/u.test(value)) { name.value = hunterName; return; }
+      hunterName = value;
+      try { localStorage.setItem('ghost-links-hunter', hunterName); } catch { /* optional */ }
+      renderLeaderboard();
+    });
+    const list = make('ol', 'leaderboard-list');
+    if (!board.length) list.append(make('li', 'leaderboard-empty', 'No ghosts busted yet. Pick a record below and make the first bust.'));
+    board.slice(0, 10).forEach((entry, index) => {
+      const row = make('li', `leaderboard-row${entry.name === hunterName ? ' is-you' : ''}`);
+      row.append(make('span', 'leader-rank', ['🥇', '🥈', '🥉'][index] || `#${index + 1}`),
+        make('span', 'leader-name', entry.name === hunterName ? `${entry.name} (you)` : entry.name),
+        make('span', 'leader-title', rankTitle(entry.points)),
+        make('span', 'leader-stats', `${entry.resolved} busted · ${entry.notAnIssue} false alarms · ${entry.followUp} watching`),
+        make('span', 'leader-points', `${entry.points} pts`));
+      list.append(row);
+    });
+    section.replaceChildren(title, make('p', 'research-note', hunterName ? `Hunting as ${hunterName}. Every decision you record counts toward your rank.` : 'Set a hunter name so your busts count toward the board.'), nameRow, list,
+      make('p', 'evidence-meta', 'Points: busted 10 · false alarm 3 · keep watching 1. Ranks: Rookie Hunter → Ghost Buster (10) → Poltergeist Wrangler (30) → Spectral Superhero (100). Counts reviewer decisions recorded in this app, not verified external corrections.'));
+  }
   const spookyCategories = {
     all: ['All haunted records', 'Every restless record'], 'still-online': ['Ghosts still haunting the web', 'Old contacts other sites still show, with quotes'],
     compromise: ['Possessed links', 'Scam content, hijacked, repurposed or parked domains'], website: ['Dead links', 'Pages that no longer load'],
@@ -59,6 +100,7 @@
     if (submit) { const arrow = make('span', '', '↗'); arrow.setAttribute('aria-hidden', 'true'); submit.replaceChildren(document.createTextNode(t('Ask ', 'Summon ')), arrow); }
     const toggle = $('halloween-toggle');
     if (toggle) { toggle.setAttribute('aria-pressed', String(spooky)); toggle.textContent = spooky ? '☀️ Normal mode' : '🎃 Halloween mode'; }
+    renderLeaderboard();
   }
   const halloweenToggle = $('halloween-toggle');
   if (halloweenToggle) halloweenToggle.addEventListener('click', () => {
@@ -85,7 +127,9 @@
     // Other saved automated website findings are treated as possible compromise until reviewed.
     return item.internal.source === 'saved_scan' && item.identifier.kind === 'website' ? 'compromise' : 'other';
   };
-  const decisionLabels = { resolved: 'Resolved by reviewer', not_an_issue: 'Not an issue', follow_up: 'Needs follow-up' };
+  const normalDecisionLabels = { resolved: 'Resolved by reviewer', not_an_issue: 'Not an issue', follow_up: 'Needs follow-up' };
+  const spookyDecisionLabels = { resolved: 'Busted 👻', not_an_issue: 'False alarm', follow_up: 'Keep watching 👁' };
+  const decisionLabels = new Proxy({}, { get: (_, key) => (spooky ? spookyDecisionLabels : normalDecisionLabels)[key] });
   let activeCategory = 'all';
   let hideDecided = false;
   let decisions = {};
@@ -128,6 +172,8 @@
       const response = await fetch('/api/review-actions', { cache: 'no-store', headers: { Accept: 'application/json' } });
       const payload = await response.json();
       decisions = response.ok && payload?.mode === feed?.mode && payload.actions && typeof payload.actions === 'object' ? payload.actions : {};
+      board = response.ok && Array.isArray(payload?.leaderboard) ? payload.leaderboard : [];
+      renderLeaderboard();
     } catch { decisions = {}; }
     await loadFindings(false);
     renderList();
@@ -158,11 +204,13 @@
     const choose = async decision => {
       buttons.querySelectorAll('button').forEach(button => { button.disabled = true; });
       try {
-        const response = await fetch('/api/review-actions', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ caseId: item.id, decision, note: note.value || '' }) });
+        const response = await fetch('/api/review-actions', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ caseId: item.id, decision, note: note.value || '', by: hunterName }) });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'save_failed');
         if (payload.action) decisions[item.id] = payload.action; else delete decisions[item.id];
+        if (Array.isArray(payload.leaderboard)) { board = payload.leaderboard; renderLeaderboard(); }
         renderList();
+        if (spooky && decision === 'resolved') setBanner(`👻 Ghost busted${hunterName ? ` by ${hunterName}` : ''}! +10 points.`, 'ready');
       } catch { status.textContent = 'The decision could not be saved. Try again.'; buttons.querySelectorAll('button').forEach(button => { button.disabled = false; }); }
     };
     const options = current ? [['open', 'Reopen']] : [['resolved', t('Mark resolved', 'Busted 👻 (resolved)')], ['not_an_issue', t('Not an issue', 'False alarm')], ['follow_up', t('Needs follow-up', 'Keep watching')]];

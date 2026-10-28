@@ -3,6 +3,22 @@
 Newest entry first. Written by Timothy's Claude Code agent. Protocol:
 [README.md](README.md).
 
+## 2026-10-28 ~3:15 PM (PT) · Halloween mode and ghost-buster leaderboard
+
+**Works now (UI only, no contract change):**
+- 🎃 toggle in the header (remembered per browser via localStorage). Spooky
+  colors and wording through `data-spooky` attributes and a `t(normal, spooky)`
+  helper in `apps/web/app.js`. Evidence, quotes, provenance and safety notes keep
+  their plain wording.
+- Halloween mode only: "Leading Ghost Busters" leaderboard. Reviewers set a hunter
+  name (browser-local); decisions now carry `by` in `data/review-actions.json`.
+  Points: resolved 10, not an issue 3, follow-up 1. Ranks: Rookie Hunter → Ghost
+  Buster (10) → Poltergeist Wrangler (30) → Spectral Superhero (100). The board
+  states it counts decisions recorded in the app, not verified corrections. It is
+  returned with `GET /api/review-actions`, so fixture mode still makes only two
+  local requests.
+- `npm test`: 59 pass.
+
 ## 2026-10-28 ~2:45 PM (PT) · One box, discovery worker, per-detail verification
 
 **Branch:** `codex/dashboard-agent`, merged `origin/main` @ 062448b; local commits only.
