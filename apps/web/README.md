@@ -1,11 +1,14 @@
 # Dashboard workspace
 
-Timothy's starting point: the fixture API at `http://127.0.0.1:4317/api/cases`.
-The frontend is not implemented yet. Choose a small framework or buildless UI.
+The buildless frontend runs at `http://127.0.0.1:4317/` with `npm run dev`.
+It reads the same-origin case API, displays historical contact flags and removed
+identifiers, and supports prompt/text search, filters and reporting-route guidance.
+It defaults to fictional fixtures unless a private live source is configured.
 
-Initial flow: prompt → select a historical case → show the corrected provider
-record → stream genuine web-research progress → show cited external references
-and a correction draft. Keep fixture/live/replay labels visible.
+Current flow: prompt → select a historical case → show recorded provenance →
+open web search or view reporting routes. Live You.com discovery, model-based
+comparison and One actions remain integration work. Keep fixture/live/replay
+labels visible and do not claim that opening Google search verified a listing.
 
 Sponsor credentials and the Streetli feed token must never enter browser code.
 Serve the frontend and its server API on the same origin, or explicitly configure
