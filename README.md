@@ -31,10 +31,10 @@ The starter reads `PORT` from the process environment; it does not load `.env` a
 
 ## Work together
 
-- **doobneek-org / Ivan:** `codex/streetli-adapter` owns the private Streetli adapter in its original private repository and the public integration contract here.
-- **TimothyMSSTATE:** `codex/dashboard-agent` owns the dashboard and CrewAI, Parasail, You.com, and One integration work.
+- **doobneek-org / Ivan:** `codex/streetli-adapter` owns the private Streetli adapter in its original private repository, case selection, the public contract, domain prompts, and evaluation examples.
+- **TimothyMSSTATE:** `codex/dashboard-agent` owns the dashboard, server runtime, and CrewAI, Parasail, You.com, and One integration wiring.
 
-Both branches target the same shared repository and case contract. Start against fixtures so the dashboard and agent can progress before a live adapter exists. Coordinate contract changes before changing producers or consumers. See [collaboration details](docs/collaboration.md) and [agent integration notes](apps/agent/README.md).
+Both branches target the same shared repository and case contract. Start against fixtures so the dashboard and agent can progress before a live adapter exists. Coordinate contract changes before changing producers or consumers. See [collaboration details](docs/collaboration.md), [Timothy's coding-agent handoff](docs/teammate-agent-handoff.md), and [agent integration notes](apps/agent/README.md). The human account owner handles provider sign-in, credits, and app consent.
 
 ## Data boundary
 
