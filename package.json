@@ -11,6 +11,8 @@
     "dev": "node --watch apps/agent/fixture-server.mjs",
     "one:setup": "node scripts/one-setup.mjs",
     "precompute": "node scripts/precompute-discovery.mjs",
+    "cloudflare:dev": "wrangler dev",
+    "cloudflare:deploy": "wrangler deploy",
     "test": "node --test"
   }
 }

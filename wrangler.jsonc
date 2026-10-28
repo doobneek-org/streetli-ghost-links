@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "streetli-ghost-links",
+  "main": "apps/cloudflare/worker.mjs",
+  "compatibility_date": "2026-03-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "routes": [{ "pattern": "you.doobneek.org", "custom_domain": true }],
+  "assets": {
+    "directory": "./apps/web",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "vars": {
+    "PUBLIC_ORIGIN": "https://you.doobneek.org"
+  }
+}
