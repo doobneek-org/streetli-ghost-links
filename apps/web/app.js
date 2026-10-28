@@ -163,9 +163,12 @@
     const toggle = make('button', 'secondary-button hide-decided', hideDecided ? t('Show decided records', 'Show the laid-to-rest') : t('Hide decided records', 'Hide the laid-to-rest'));
     toggle.type = 'button'; toggle.setAttribute('aria-pressed', String(hideDecided));
     toggle.addEventListener('click', () => { hideDecided = !hideDecided; visibleCount = 30; renderList(); });
-    const discover = make('button', 'secondary-button', feed?.mode === 'live' ? t('Run discovery (next 3 due)', 'Send out the ghost hunters (next 3)') : t('Discovery needs live data', 'Ghost hunters need live data'));
+    const targeted = categories.some(category => category.id === activeCategory);
+    const targetName = targeted ? (spookyCategories[activeCategory]?.[0] && spooky ? spookyCategories[activeCategory][0] : categories.find(category => category.id === activeCategory).title) : '';
+    const discover = make('button', 'secondary-button', feed?.mode !== 'live' ? t('Discovery needs live data', 'Ghost hunters need live data')
+      : targeted ? t(`Run discovery on ${targetName} (next 3)`, `Hunt the ${targetName} (next 3)`) : t('Run discovery (next 3 due)', 'Send out the ghost hunters (next 3)'));
     discover.type = 'button'; discover.disabled = feed?.mode !== 'live';
-    discover.addEventListener('click', () => runResearch('/api/discovery/run', { maxJobs: 3 }, $('discovery-output'), discover, renderDiscoveryResult));
+    discover.addEventListener('click', () => runResearch('/api/discovery/run', { maxJobs: 3, ...(targeted ? { category: activeCategory } : {}) }, $('discovery-output'), discover, renderDiscoveryResult));
     board.replaceChildren(...cards, toggle, discover);
   }
 
@@ -455,6 +458,7 @@
     research_runtime_missing: 'The Python research runtime is not installed. See apps/agent/README.md.',
     research_busy: 'Another research run is in progress. Try again when it finishes.',
     invalid_manual_test: 'Enter a type, an identifier, and an organization name.',
+    no_cases_in_category: 'No records in this category.',
     invalid_request_text: 'Type a request of 3–300 characters.',
     invalid_event_text: 'Describe the event and the place in a sentence (8–300 characters).'
   };

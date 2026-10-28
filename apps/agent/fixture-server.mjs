@@ -173,7 +173,11 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
         if (lastFeed.mode !== 'live') return send(409, { error: 'fixture_research_disabled' });
         if (!discovery.available()) return send(503, { error: 'research_runtime_missing' });
         if (research.busy || discovery.busy) return send(429, { error: 'research_busy' });
-        return streamDiscovery(response, lastFeed, { discovery, maxJobs });
+        // Optionally target one dashboard category (for example the possible-compromise records).
+        const { CATEGORIES, categoryOf } = await import('./ask.mjs');
+        const onlyCaseIds = Object.hasOwn(CATEGORIES, body?.category) ? lastFeed.cases.filter(item => categoryOf(item) === body.category).map(item => item.id) : null;
+        if (onlyCaseIds && !onlyCaseIds.length) return send(409, { error: 'no_cases_in_category' });
+        return streamDiscovery(response, lastFeed, { discovery, maxJobs, ...(onlyCaseIds ? { onlyCaseIds } : {}) });
       }
       if (path === '/api/discovery/findings' && request.method === 'GET') {
         const feedNow = lastFeed || validateCaseFeed(await getCases());
