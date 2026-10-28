@@ -87,7 +87,9 @@ The baseline adapter, planning helper and evidence gates are implemented. The
 current app server still reports `liveResearchImplemented: false`: it does not
 execute sponsor searches or run a background discovery worker. Runtime storage,
 provider keys, budget enforcement and genuine tool progress remain Timothy's
-integration work. The private localhost bridge is not a shared hosted endpoint.
+integration work. The shared public baseline endpoint is now the app's default,
+refreshed hourly by Streetli. The private localhost bridge remains an optional
+owner-only source; a teammate does not need it or Firebase credentials.
 
 AWS is optional in the event guide. No database or public hosting vendor is
 prescribed for The Open Haunt. Reuse the existing backend and host the interface

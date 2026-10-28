@@ -23,9 +23,14 @@ already works: extend it rather than building a second app.
   Name.com/GoDaddy routes when identified. No reports are sent.
 - Executable v1/v2 contracts, deterministic discovery planning, and tests.
 
-The owner's current local feed contains retained historical cases; it is not a
-public dataset or a hosted teammate endpoint. A teammate's `localhost:4318` is
-their own machine. Use fixtures until Ivan supplies an approved reachable feed.
+The shared public endpoint is now the default:
+`https://us-central1-streetli.cloudfunctions.net/streetliGhostLinksCases`.
+Merge `origin/main` and run `npm run dev`. No Streetli token, Firebase credentials,
+or owner's running machine is required. Remove an old explicit localhost
+`STREETLI_CASES_URL` override if present; a blank value uses the shared endpoint.
+The backend refreshes the precomputed public projection hourly. API reads do not
+launch paid research or catalogue scans. Set `STREETLI_CASES_MODE=fixture` for
+offline fictional examples.
 Imported real cases preserve `review_required` as their finding status. Do not
 silently promote flags into confirmed findings.
 
@@ -67,8 +72,9 @@ actual model predictions and score them without committing results or secrets.
    provider record with its website, phone or email identifier and recorded
    flag/removal provenance. Preserve that distinction: not every case is a
    confirmed correction. The UI must identify fixtures and review-required cases.
-2. Use the existing server-only case source adapter. Default to fixtures; live mode
-   reads `STREETLI_CASES_URL` with `STREETLI_CASES_TOKEN`. Validate the response
+2. Use the existing server-only case source adapter. Live mode defaults to the
+   shared endpoint without a token. Custom private sources use `STREETLI_CASES_URL`
+   with `STREETLI_CASES_TOKEN`. Validate the response
    using `packages/contracts/cases.mjs`. Support v1 fixtures and v2 historical
    cases; keep that contract stable and propose
    changes to Ivan before changing producers or consumers. Do not request

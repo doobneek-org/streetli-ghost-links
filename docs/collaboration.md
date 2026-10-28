@@ -52,8 +52,9 @@ the same localhost address does not connect another machine to it.
 ## Current working surface
 
 With Node.js 20.19+, run `npm test` and `npm run dev` from the repository root.
-Open `http://127.0.0.1:4317/`. No install is needed. The API reads fixtures or a
-configured approved private case feed; the private local bridge itself remains
+Open `http://127.0.0.1:4317/`. No install is needed. The API reads the shared public
+case feed by default, with no data token required. Explicit fixture mode remains
+available offline; the private local bridge itself remains
 in the owner's separate checkout. See [local dev setup](local-dev.md). The
 frontend and reporting routes work; automatic sponsor-powered research does not
 yet run. Extend this interface rather than rebuild a second frontend.

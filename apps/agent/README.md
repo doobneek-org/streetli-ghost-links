@@ -2,12 +2,17 @@
 
 This directory contains the local case server, private-feed consumer, and reporting-route lookup. It serves a working historical-case browser using fixtures or a configured private projection. You.com/CrewAI/Parasail/One agents and automatic external-reference verification remain integration work; loading retained records does not run a new Streetli scan.
 
+`npm run dev` now uses the shared public data endpoint by default, without
+Streetli credentials. `STREETLI_CASES_MODE=fixture` selects offline examples.
+The endpoint is pinned in `packages/contracts/case-source.mjs`; a custom private
+source can still override it with a server-only token.
+
 **Owner:** TimothyMSSTATE, branch `codex/dashboard-agent`.
 
 ## First working flow
 
 1. Read `GET http://127.0.0.1:4317/api/cases` from the local fixture server.
-2. Select a case with `reviewState: "approved_for_research"`.
+2. Select a case eligible under the trusted discovery plan, or explicitly approved for research. Eligibility does not confirm its finding.
 3. Search its exact old identifier using You.com, with organization and locality context where needed.
 4. Fetch or inspect candidate public sources and verify the exact provider/branch association. An identifier match alone does not establish ownership, wrongdoing, or a current error.
 5. Return attributed evidence and a proposed correction with inline reporting instructions. Keep the original case provenance and uncertainty visible.
