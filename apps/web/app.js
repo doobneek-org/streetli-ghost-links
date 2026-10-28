@@ -30,6 +30,44 @@
   let loadFailed = false;
   const reportingPlans = new Map();
 
+  // ---- Halloween mode: spooky colors and wording. Evidence, quotes and safety notes stay plain. ----
+  let spooky = false;
+  try { spooky = localStorage.getItem('ghost-links-halloween') === 'on'; } catch { spooky = false; }
+  const t = (normal, haunted) => spooky ? haunted : normal;
+  const spookyCategories = {
+    all: ['All haunted records', 'Every restless record'], 'still-online': ['Ghosts still haunting the web', 'Old contacts other sites still show, with quotes'],
+    compromise: ['Possessed links', 'Scam content, hijacked, repurposed or parked domains'], website: ['Dead links', 'Pages that no longer load'],
+    phone: ['Phantom numbers', 'Numbers flagged disconnected'], email: ['Lost souls (emails)', 'Addresses that bounce into the void'],
+    scan: ['Restless spirits', 'Former links a past scan saw'], other: ['Things that go bump', 'Other flagged contacts']
+  };
+  const spookyVerdicts = { stale_reference: 'Still haunting', historical_mention: 'Faded echo', different_entity: 'Wrong spirit',
+    not_present: 'Not seen on checked pages', uncertain: 'Murky', error: 'Séance failed' };
+  const verdictText = verdict => t(verdictLabels[verdict]?.[0] || 'Unknown', spookyVerdicts[verdict] || 'Unknown');
+  const originalText = new Map();
+  function applySpooky() {
+    const root = document.documentElement;
+    if (root?.setAttribute) root.setAttribute('data-halloween', spooky ? 'on' : 'off');
+    document.querySelectorAll('[data-spooky]').forEach(node => {
+      if (!originalText.has(node)) originalText.set(node, [...node.childNodes]);
+      if (spooky) node.textContent = node.getAttribute('data-spooky'); else node.replaceChildren(...originalText.get(node));
+    });
+    document.querySelectorAll('[data-spooky-placeholder]').forEach(node => {
+      if (!originalText.has(node)) originalText.set(node, node.getAttribute('placeholder'));
+      node.setAttribute('placeholder', spooky ? node.getAttribute('data-spooky-placeholder') : originalText.get(node));
+    });
+    const submit = $('search-submit');
+    if (submit) { const arrow = make('span', '', '↗'); arrow.setAttribute('aria-hidden', 'true'); submit.replaceChildren(document.createTextNode(t('Ask ', 'Summon ')), arrow); }
+    const toggle = $('halloween-toggle');
+    if (toggle) { toggle.setAttribute('aria-pressed', String(spooky)); toggle.textContent = spooky ? '☀️ Normal mode' : '🎃 Halloween mode'; }
+  }
+  const halloweenToggle = $('halloween-toggle');
+  if (halloweenToggle) halloweenToggle.addEventListener('click', () => {
+    spooky = !spooky;
+    try { localStorage.setItem('ghost-links-halloween', spooky ? 'on' : 'off'); } catch { /* preference is optional */ }
+    applySpooky();
+    if (feed) renderList();
+  });
+
   // ---- Maintainer dashboard: failed verifications grouped by category ----
   const categories = [
     { id: 'compromise', title: 'Possible compromise', tone: 'found', detail: 'Scam content, suspected takeover, repurposed or parked domains',
@@ -64,8 +102,9 @@
       const button = make('button', `category-card tone-${tone}`);
       button.type = 'button'; button.setAttribute('data-category', id);
       button.setAttribute('aria-pressed', String(activeCategory === id));
-      button.append(make('span', 'category-title', title), make('span', 'category-count', number(open(list))),
-        make('span', 'category-detail', `${detail} · ${number(list.length - open(list))} decided`));
+      const [spookyTitle, spookyDetail] = spookyCategories[id] || [title, detail];
+      button.append(make('span', 'category-title', t(title, spookyTitle)), make('span', 'category-count', number(open(list))),
+        make('span', 'category-detail', `${t(detail, spookyDetail)} · ${number(list.length - open(list))} ${t('decided', 'laid to rest')}`));
       button.addEventListener('click', () => { activeCategory = activeCategory === id ? 'all' : id; visibleCount = 30; renderList(); });
       return button;
     };
@@ -75,10 +114,10 @@
       if (list.length || category.id === 'compromise') cards.push(card(category.id, category.title, category.detail, category.tone, list));
     }
     if (feed?.mode === 'live') cards.splice(1, 0, card('still-online', 'Risky links still online', 'Old contacts other sites still show, with quotes', 'found', items.filter(item => findings[item.id]?.verdict === 'stale_reference')));
-    const toggle = make('button', 'secondary-button hide-decided', hideDecided ? 'Show decided records' : 'Hide decided records');
+    const toggle = make('button', 'secondary-button hide-decided', hideDecided ? t('Show decided records', 'Show the laid-to-rest') : t('Hide decided records', 'Hide the laid-to-rest'));
     toggle.type = 'button'; toggle.setAttribute('aria-pressed', String(hideDecided));
     toggle.addEventListener('click', () => { hideDecided = !hideDecided; visibleCount = 30; renderList(); });
-    const discover = make('button', 'secondary-button', feed?.mode === 'live' ? 'Run discovery (next 3 due)' : 'Discovery needs live data');
+    const discover = make('button', 'secondary-button', feed?.mode === 'live' ? t('Run discovery (next 3 due)', 'Send out the ghost hunters (next 3)') : t('Discovery needs live data', 'Ghost hunters need live data'));
     discover.type = 'button'; discover.disabled = feed?.mode !== 'live';
     discover.addEventListener('click', () => runResearch('/api/discovery/run', { maxJobs: 3 }, $('discovery-output'), discover, renderDiscoveryResult));
     board.replaceChildren(...cards, toggle, discover);
@@ -126,7 +165,7 @@
         renderList();
       } catch { status.textContent = 'The decision could not be saved. Try again.'; buttons.querySelectorAll('button').forEach(button => { button.disabled = false; }); }
     };
-    const options = current ? [['open', 'Reopen']] : [['resolved', 'Mark resolved'], ['not_an_issue', 'Not an issue'], ['follow_up', 'Needs follow-up']];
+    const options = current ? [['open', 'Reopen']] : [['resolved', t('Mark resolved', 'Busted 👻 (resolved)')], ['not_an_issue', t('Not an issue', 'False alarm')], ['follow_up', t('Needs follow-up', 'Keep watching')]];
     for (const [decision, label] of options) {
       const button = make('button', decision === 'resolved' ? 'primary-button' : 'secondary-button', label);
       button.type = 'button';
@@ -251,7 +290,7 @@
       const flags = make('span', 'record-flags');
       if (categoryOf(item) === 'compromise') flags.append(make('span', 'record-flag risk', 'Compromise risk'));
       const finding = findings[item.id];
-      if (finding && verdictLabels[finding.verdict]) flags.append(make('span', `record-flag verdict-${verdictLabels[finding.verdict][1]}`, verdictLabels[finding.verdict][0]));
+      if (finding && verdictLabels[finding.verdict]) flags.append(make('span', `record-flag verdict-${verdictLabels[finding.verdict][1]}`, verdictText(finding.verdict)));
       if (decisions[item.id]) flags.append(make('span', `record-flag decided-${decisions[item.id].decision}`, decisionLabels[decisions[item.id].decision] || 'Decided'));
       if (flags.childNodes.length) button.append(flags);
       if (historicalDate) button.setAttribute('aria-label', `${item.organization.name}, ${labels[item.identifier.kind]}, ${item.identifier.value}, ${stateLabels[item.internal.state]}, ${date(historicalDate)}`);
@@ -366,7 +405,7 @@
     const section = make('section', 'research');
     const fixture = feed?.mode === 'fixture';
     const approved = item.reviewState === 'approved_for_research' || eligibleIds.has(item.id);
-    const button = make('button', 'primary-button research-button', findings[item.id] ? 'Research again' : 'Research the web');
+    const button = make('button', 'primary-button research-button', findings[item.id] ? t('Research again', 'Hunt again') : t('Research the web', 'Hunt this ghost'));
     button.type = 'button';
     button.disabled = fixture || !approved;
     const note = make('p', 'research-note', fixture
@@ -466,7 +505,8 @@
 
   // ---- Discovery findings (Ivan's planner jobs, validated with validateVerification) ----
   function findingCard(finding) {
-    const [title, tone] = verdictLabels[finding.verdict] || ['Unknown', 'unknown'];
+    const tone = verdictLabels[finding.verdict]?.[1] || 'unknown';
+    const title = verdictText(finding.verdict);
     const card = make('div', `evidence evidence-${tone}`);
     const head = make('div', 'evidence-head');
     head.append(make('span', `evidence-state ${tone}`, title), make('span', 'evidence-meta', `Checked ${checkedTime(finding.checkedAt)} · ${finding.pages ?? 0} pages fetched`));
@@ -519,7 +559,7 @@
     activeCategory = 'all'; visibleCount = 30;
     box.append(make('p', 'event-title', `${number(result.matched || 0)} matching records shown in the queue below`));
     if (result.selection?.caseIds?.length) {
-      box.append(make('div', 'eyebrow', 'Research these first'));
+      box.append(make('div', 'eyebrow', t('Research these first', 'Hunt these first')));
       if (result.selection.explanation) box.append(make('p', 'research-note', result.selection.explanation));
       for (const id of result.selection.caseIds) {
         const item = items.find(candidate => candidate.id === id);
@@ -530,7 +570,7 @@
         box.append(open);
       }
     } else if (result.selectionGate) box.append(make('p', 'research-note', 'The research shortlist was rejected by the output gate; review the filtered records directly.'));
-    const clear = make('button', 'secondary-button', 'Clear this request');
+    const clear = make('button', 'secondary-button', t('Clear this request', 'Banish this request'));
     clear.type = 'button';
     clear.addEventListener('click', () => { askFilter = null; $('route-output').replaceChildren(); renderList(); });
     box.append(clear);
@@ -563,7 +603,7 @@
     if (Array.isArray(service.checks) && service.checks.length) {
       const risky = service.checks.filter(check => check.state === 'at_risk').length;
       const confirmed = service.checks.filter(check => check.state === 'confirmed').length;
-      card.append(make('div', 'eyebrow', risky ? `What we checked · ${risky} may be at risk` : `What we checked · ${confirmed} confirmed`));
+      card.append(make('div', 'eyebrow', risky ? `${t('What we checked', 'What the spirits revealed')} · ${risky} may be at risk` : `${t('What we checked', 'What the spirits revealed')} · ${confirmed} confirmed`));
       const list = make('ul', 'checks');
       for (const check of service.checks.slice(0, 8)) {
         const row = make('li', `check check-${check.state}`);
@@ -601,11 +641,11 @@
     const available = services.filter(s => !disrupted.includes(s));
     box.append(make('p', 'research-summary', `${services.length} services found nearby · ${disrupted.length} report a disruption · checked ${checkedTime(result.observedAt)}`));
     if (disrupted.length) {
-      box.append(make('div', 'eyebrow', finding ? 'Recent closure or change notices' : 'Reported disruption'));
+      box.append(make('div', 'eyebrow', finding ? t('Recent closure or change notices', 'Ominous notices (closed or changed)') : t('Reported disruption', 'Cursed (reported closed or changed)')));
       disrupted.forEach(s => box.append(serviceCard(s)));
     }
     if (available.length) {
-      box.append(make('div', 'eyebrow', finding ? 'Services found' : 'Likely still able to help'));
+      box.append(make('div', 'eyebrow', finding ? t('Services found', 'Safe havens found') : t('Likely still able to help', 'Safe havens (no closure notice found)')));
       box.append(make('p', 'research-note', 'No closure notice was found online for these. That is not proof they are open: call ahead.'));
       available.forEach(s => box.append(serviceCard(s)));
     }
@@ -757,5 +797,6 @@
   document.querySelectorAll('[data-history-state]').forEach(button => button.addEventListener('click', () => { activeState = button.dataset.historyState; stateChosen = true; visibleCount = 30; renderList(); }));
   elements.more.addEventListener('click', () => { visibleCount += 30; renderList(); });
   elements.refresh.addEventListener('click', () => loadCases(true));
+  applySpooky();
   loadCases();
 })();

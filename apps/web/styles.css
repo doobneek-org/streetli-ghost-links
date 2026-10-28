@@ -89,3 +89,35 @@ main{max-width:1320px;margin:auto;padding:0 46px}.hero{padding:64px 0 52px;max-w
 .check-field{color:var(--secondary);text-transform:uppercase;font-size:9px;letter-spacing:1px}
 .check-source{font-size:10px;color:var(--green)}
 @media (max-width:520px){.check{grid-template-columns:14px 70px 1fr}.check-source{grid-column:3}}
+
+/* ---------- Halloween mode (toggle in the header) ---------- */
+.halloween-toggle{margin-left:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:5px 11px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap}
+.halloween-toggle:hover{border-color:var(--amber)}
+:root[data-halloween="on"]{
+  --paper:#140d1c;--surface:#1f1529;--ink:#f4ecff;--secondary:#bcaecd;--line:#3b2b4f;
+  --green:#d9530b;--green-hover:#f26b1d;--soft-green:#2b1d12;
+  --amber:#ffb454;--soft-amber:#3a2810;--red:#ff6b86;--soft-red:#3d1424;
+  --shadow:0 18px 50px -30px #ff7a1a66;color-scheme:dark;
+}
+:root[data-halloween="on"] body{background:radial-gradient(1200px 500px at 85% -10%,#3a1d4f 0%,transparent 60%),radial-gradient(900px 400px at -10% 10%,#2a1240 0%,transparent 55%),var(--paper)}
+:root[data-halloween="on"] .primary-button{color:#1a0d00;font-weight:700}
+:root[data-halloween="on"] .secondary-button:hover,:root[data-halloween="on"] .category-card:hover{border-color:var(--green)}
+:root[data-halloween="on"] #hero-title{text-shadow:0 0 24px #ff7a1a55}
+:root[data-halloween="on"] .hero{position:relative}
+:root[data-halloween="on"] .hero::after{content:"🦇  🎃  🦇";position:absolute;top:6px;right:8px;font-size:22px;letter-spacing:6px;opacity:.75;pointer-events:none;animation:ghost-float 4s ease-in-out infinite}
+:root[data-halloween="on"] .brand-mark{animation:ghost-float 3s ease-in-out infinite;background:transparent}
+:root[data-halloween="on"] .evidence-found,:root[data-halloween="on"] .tone-found{box-shadow:0 0 0 1px var(--red),0 0 18px -6px var(--red)}
+:root[data-halloween="on"] .category-card[aria-pressed="true"]{box-shadow:0 0 0 1px var(--green),0 0 20px -6px var(--green)}
+:root[data-halloween="on"] input,:root[data-halloween="on"] select{color:var(--ink)}
+:root[data-halloween="on"] input::placeholder{color:#8f80a3}
+@keyframes ghost-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@media (prefers-reduced-motion:reduce){:root[data-halloween="on"] .hero::after,:root[data-halloween="on"] .brand-mark{animation:none}}
+@media (max-width:520px){:root[data-halloween="on"] .hero::after{font-size:16px;top:0}}
+/* Ivan's light-only backgrounds, darkened for Halloween mode */
+:root[data-halloween="on"] .type-filters button:hover,:root[data-halloween="on"] .record-kind{background:#2c2038}
+:root[data-halloween="on"] .record:hover{border-color:var(--green)}
+:root[data-halloween="on"] .record[aria-current="true"]{border-color:var(--green);background:#2a1b2e;box-shadow:inset 3px 0 var(--green)}
+:root[data-halloween="on"] .identifier-block,:root[data-halloween="on"] .registrar-info{background:#181020}
+:root[data-halloween="on"] .history-filters button[aria-pressed="true"],:root[data-halloween="on"] .skip-link{color:#1a0d00}
+.category-board>.secondary-button{align-self:center;justify-self:start;white-space:normal;text-align:left}
+:root[data-halloween="on"] .primary-button:disabled,:root[data-halloween="on"] .primary-button[aria-disabled="true"]{background:#2e2240;color:var(--secondary);opacity:1}

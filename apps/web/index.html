@@ -12,29 +12,29 @@
 <body>
   <a class="skip-link" href="#results">Skip to records</a>
   <header class="app-header">
-    <a class="brand" href="/" aria-label="Ghost Links home"><span class="brand-mark" aria-hidden="true">g</span><span>ghost links<span class="brand-byline">a Streetli experiment</span></span></a>
-    <div class="header-status"><span class="status-dot" aria-hidden="true"></span><span id="source-label">Connecting to source</span><span class="dev-label">Local dev</span></div>
+    <a class="brand" href="/" aria-label="Ghost Links home"><span class="brand-mark" aria-hidden="true" data-spooky="👻">g</span><span>ghost links<span class="brand-byline" data-spooky="a Streetli séance">a Streetli experiment</span></span></a>
+    <div class="header-status"><span class="status-dot" aria-hidden="true"></span><span id="source-label">Connecting to source</span><span class="dev-label">Local dev</span><button id="halloween-toggle" class="halloween-toggle" type="button" aria-pressed="false">🎃 Halloween mode</button></div>
   </header>
   <main>
     <section class="hero" aria-labelledby="hero-title">
-      <div class="eyebrow"><span aria-hidden="true">✳</span> Small corrections. Better connections.</div>
-      <h1 id="hero-title">How can I make the<br class="desktop-break"> social safety net better?</h1>
-      <p class="hero-description">Start with the information that needs a second look. Explore phone numbers, emails, and websites previously flagged in Streetli.</p>
+      <div class="eyebrow" data-spooky="🕸 Small exorcisms. Better connections."><span aria-hidden="true">✳</span> Small corrections. Better connections.</div>
+      <h1 id="hero-title" data-spooky="Which ghosts are haunting the safety net tonight?">How can I make the<br class="desktop-break"> social safety net better?</h1>
+      <p class="hero-description" data-spooky="Dead phone numbers, abandoned emails and possessed websites linger long after they should. Hunt them down before they lead someone in need astray.">Start with the information that needs a second look. Explore phone numbers, emails, and websites previously flagged in Streetli.</p>
       <form id="search-form" class="search-form" role="search">
         <label class="sr-only" for="search-input">Ask Ghost Links or search the records</label>
         <span class="search-symbol" aria-hidden="true">⌕</span>
-        <input id="search-input" name="query" type="search" autocomplete="off" placeholder="Food services that may be at risk · flood on the Upper West Side · food pantry in Harlem">
+        <input id="search-input" name="query" type="search" autocomplete="off" placeholder="Food services that may be at risk · flood on the Upper West Side · food pantry in Harlem" data-spooky-placeholder="Summon: cursed food services · a flood on the Upper West Side · a food pantry in Harlem">
         <button id="search-submit" class="primary-button search-submit" type="submit">Ask <span aria-hidden="true">↗</span></button>
       </form>
       <div class="example-prompts" aria-label="Suggested searches"><span>Try</span><button type="button" data-prompt="Find broken websites">Find broken websites</button><button type="button" data-prompt="Show bad phone numbers">Show bad phone numbers</button><button type="button" data-prompt="Find bad email addresses">Find bad email addresses</button></div>
       <div class="example-prompts" aria-label="Suggested questions"><span>Ask</span><button type="button" data-ask="Find me food services that may be at risk">Food services that may be at risk</button><button type="button" data-ask="There was a flood on the Upper West Side">Flood on the Upper West Side</button><button type="button" data-ask="I need a food pantry in Harlem">Food pantry in Harlem</button></div>
-      <p class="search-note">Typing filters the loaded records instantly. Press Ask and Parasail, coordinated by CrewAI, decides whether to search the records, check an event, or find services with You.com.</p>
+      <p class="search-note" data-spooky="Typing sifts the crypt instantly. Press Summon and Parasail, guided by a CrewAI coven, decides whether to hunt haunted records, check a calamity, or seek safe havens with You.com.">Typing filters the loaded records instantly. Press Ask and Parasail, coordinated by CrewAI, decides whether to search the records, check an event, or find services with You.com.</p>
       <div id="route-output" class="research-output route-output"></div>
     </section>
 
 
     <section class="workbench" id="results" aria-labelledby="results-title">
-      <div class="workbench-heading"><div><div class="eyebrow">The review queue</div><h2 id="results-title">A place to start fixing things.</h2></div><button id="refresh-button" class="secondary-button" type="button"><span aria-hidden="true">↻</span> Refresh records</button></div>
+      <div class="workbench-heading"><div><div class="eyebrow" data-spooky="The haunted queue">The review queue</div><h2 id="results-title" data-spooky="Ghosts waiting to be busted.">A place to start fixing things.</h2></div><button id="refresh-button" class="secondary-button" type="button"><span aria-hidden="true">↻</span> Refresh records</button></div>
       <div id="source-banner" class="source-banner" role="status" aria-live="polite"><span class="loading-pulse" aria-hidden="true"></span><span id="load-status">Loading historical records from the configured source…</span></div>
       <div id="category-board" class="category-board" role="group" aria-label="Failed verifications by category"></div>
       <div id="discovery-output" class="research-output discovery-output"></div>
@@ -49,7 +49,7 @@
 
     <section class="pipeline-test" aria-labelledby="pipeline-test-title">
       <div class="eyebrow">Developer check</div>
-      <h2 id="pipeline-test-title">Test the research pipeline</h2>
+      <h2 id="pipeline-test-title" data-spooky="Test the ghost-hunting rig">Test the research pipeline</h2>
       <p class="pipeline-intro">Runs a real You.com search and a CrewAI/Parasail check on an identifier you enter. It is not a Streetli case, and any correction draft is marked test-only.</p>
       <form id="pipeline-form" class="pipeline-form">
         <label>Type <select id="pipeline-kind"><option value="phone">Phone</option><option value="website">Website</option><option value="email">Email</option></select></label>
@@ -61,6 +61,6 @@
       <div id="pipeline-output" class="research-output"></div>
     </section>
   </main>
-  <footer class="app-footer"><span class="footer-wordmark">ghost links</span><span>Read-only review · external verification not run.</span><a href="https://github.com/doobneek-org/streetli-ghost-links" target="_blank" rel="noopener noreferrer">Open source <span aria-hidden="true">↗</span></a></footer>
+  <footer class="app-footer"><span class="footer-wordmark">ghost links</span><span data-spooky="Read-only séance · no spirits were harmed.">Read-only review · external verification not run.</span><a href="https://github.com/doobneek-org/streetli-ghost-links" target="_blank" rel="noopener noreferrer">Open source <span aria-hidden="true">↗</span></a></footer>
 </body>
 </html>
