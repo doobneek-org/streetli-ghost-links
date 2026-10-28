@@ -54,21 +54,22 @@ def _fetchable(url: str) -> bool:
         and not re.search(r"\s", url) and len(url) <= 2048
 
 
-def contents(urls: list[str]) -> dict[str, str]:
+def contents(urls: list[str], fresh: bool = False) -> dict[str, str]:
     """Clean markdown per URL. URLs missing from the result could not be fetched.
     One bad URL can fail a whole batch (HTTP 422), so a failed batch is retried per URL."""
     urls = [u for u in dict.fromkeys(urls) if _fetchable(u)]
     if not urls:
         return {}
     try:
-        data = _post(CONTENTS_URL, {"urls": urls, "formats": ["markdown"]}, timeout=45)
+        # fresh=True asks for a current fetch (max_age 0), as current verification requires.
+        data = _post(CONTENTS_URL, {"urls": urls, "formats": ["markdown"], **({"max_age": 0} if fresh else {})}, timeout=45)
     except YouComError:
         if len(urls) == 1:
             raise
         pages = {}
         for url in urls:
             try:
-                pages.update(contents([url]))
+                pages.update(contents([url], fresh))
             except YouComError:
                 pass
         return pages

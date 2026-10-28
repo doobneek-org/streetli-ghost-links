@@ -51,6 +51,10 @@
   let activeCategory = 'all';
   let hideDecided = false;
   let decisions = {};
+  let findings = {};
+  let eligibleIds = new Set();
+  let askFilter = null;
+  const verdictLabels = { stale_reference: ['Still listed online', 'found'], historical_mention: ['Old mention only', 'clear'], different_entity: ['Different organization', 'clear'], not_present: ['Not found on checked pages', 'clear'], uncertain: ['Inconclusive', 'unknown'], error: ['Check failed', 'unknown'] };
 
   function renderBoard() {
     const board = $('category-board');
@@ -70,10 +74,14 @@
       const list = items.filter(item => categoryOf(item) === category.id);
       if (list.length || category.id === 'compromise') cards.push(card(category.id, category.title, category.detail, category.tone, list));
     }
+    if (feed?.mode === 'live') cards.splice(1, 0, card('still-online', 'Risky links still online', 'Old contacts other sites still show, with quotes', 'found', items.filter(item => findings[item.id]?.verdict === 'stale_reference')));
     const toggle = make('button', 'secondary-button hide-decided', hideDecided ? 'Show decided records' : 'Hide decided records');
     toggle.type = 'button'; toggle.setAttribute('aria-pressed', String(hideDecided));
     toggle.addEventListener('click', () => { hideDecided = !hideDecided; visibleCount = 30; renderList(); });
-    board.replaceChildren(...cards, toggle);
+    const discover = make('button', 'secondary-button', feed?.mode === 'live' ? 'Run discovery (next 3 due)' : 'Discovery needs live data');
+    discover.type = 'button'; discover.disabled = feed?.mode !== 'live';
+    discover.addEventListener('click', () => runResearch('/api/discovery/run', { maxJobs: 3 }, $('discovery-output'), discover, renderDiscoveryResult));
+    board.replaceChildren(...cards, toggle, discover);
   }
 
   async function loadDecisions() {
@@ -82,7 +90,18 @@
       const payload = await response.json();
       decisions = response.ok && payload?.mode === feed?.mode && payload.actions && typeof payload.actions === 'object' ? payload.actions : {};
     } catch { decisions = {}; }
+    await loadFindings(false);
     renderList();
+  }
+
+  async function loadFindings(render = true) {
+    if (feed?.mode !== 'live') { findings = {}; eligibleIds = new Set(); return; }
+    try {
+      const response = await fetch('/api/discovery/findings', { cache: 'no-store', headers: { Accept: 'application/json' } });
+      const payload = await response.json();
+      if (response.ok && payload?.mode === 'live') { findings = payload.findings || {}; eligibleIds = new Set(payload.eligibleCaseIds || []); }
+    } catch { /* keep previous findings */ }
+    if (render) renderList();
   }
 
   function reviewSection(item) {
@@ -170,7 +189,8 @@
     const plan = queryPlan(query);
     return items.filter(item => {
       if (plan.kinds.size && !plan.kinds.has(item.identifier.kind)) return false;
-      if (activeCategory !== 'all' && categoryOf(item) !== activeCategory) return false;
+      if (askFilter && !askFilter.has(item.id)) return false;
+      if (activeCategory === 'still-online' ? findings[item.id]?.verdict !== 'stale_reference' : activeCategory !== 'all' && categoryOf(item) !== activeCategory) return false;
       if (hideDecided && decisions[item.id] && decisions[item.id].decision !== 'follow_up') return false;
       const haystack = [item.organization.name, item.organization.locality, item.identifier.value, item.identifier.kind, item.internal.reasonCode, readableReason(item.internal.reasonCode), stateLabels[item.internal.state]].join(' ').toLowerCase();
       return plan.terms.every(term => haystack.includes(term));
@@ -230,6 +250,8 @@
       button.append(top, make('span', 'record-value', item.identifier.value), bottom);
       const flags = make('span', 'record-flags');
       if (categoryOf(item) === 'compromise') flags.append(make('span', 'record-flag risk', 'Compromise risk'));
+      const finding = findings[item.id];
+      if (finding && verdictLabels[finding.verdict]) flags.append(make('span', `record-flag verdict-${verdictLabels[finding.verdict][1]}`, verdictLabels[finding.verdict][0]));
       if (decisions[item.id]) flags.append(make('span', `record-flag decided-${decisions[item.id].decision}`, decisionLabels[decisions[item.id].decision] || 'Decided'));
       if (flags.childNodes.length) button.append(flags);
       if (historicalDate) button.setAttribute('aria-label', `${item.organization.name}, ${labels[item.identifier.kind]}, ${item.identifier.value}, ${stateLabels[item.internal.state]}, ${date(historicalDate)}`);
@@ -322,7 +344,7 @@
         loadReportingPlan(item, stepsBox);
       }
     });
-    elements.detail.append(kicker, make('h3', 'detail-title', item.organization.name), make('p', 'detail-locality', item.organization.locality), identifier, facts, context, links, make('p', 'detail-footnote', feed?.mode === 'fixture' ? 'Fictional example · do not report this case to a real platform.' : 'Opening web search sends this identifier and organization name to Google.'), reviewSection(item), researchSection(item), toggle, stepsBox);
+    elements.detail.append(kicker, make('h3', 'detail-title', item.organization.name), make('p', 'detail-locality', item.organization.locality), identifier, facts, context, links, make('p', 'detail-footnote', feed?.mode === 'fixture' ? 'Fictional example · do not report this case to a real platform.' : 'Opening web search sends this identifier and organization name to Google.'), findingSection(item), reviewSection(item), researchSection(item), toggle, stepsBox);
   }
 
   // ---- Web research: You.com search + CrewAI/Parasail verification, streamed from the server ----
@@ -336,22 +358,23 @@
     research_runtime_missing: 'The Python research runtime is not installed. See apps/agent/README.md.',
     research_busy: 'Another research run is in progress. Try again when it finishes.',
     invalid_manual_test: 'Enter a type, an identifier, and an organization name.',
+    invalid_request_text: 'Type a request of 3–300 characters.',
     invalid_event_text: 'Describe the event and the place in a sentence (8–300 characters).'
   };
 
   function researchSection(item) {
     const section = make('section', 'research');
     const fixture = feed?.mode === 'fixture';
-    const approved = item.reviewState === 'approved_for_research';
-    const button = make('button', 'primary-button research-button', 'Research the web');
+    const approved = item.reviewState === 'approved_for_research' || eligibleIds.has(item.id);
+    const button = make('button', 'primary-button research-button', findings[item.id] ? 'Research again' : 'Research the web');
     button.type = 'button';
     button.disabled = fixture || !approved;
     const note = make('p', 'research-note', fixture
       ? 'Live research is off for fictional fixtures. Use the pipeline test below the queue to watch a real run.'
-      : !approved ? 'Research runs only on cases approved for research.'
-      : 'Searches You.com for this identifier, then a CrewAI agent on Parasail checks each page. Nothing is sent.');
+      : !approved ? 'This record is outside the automatic discovery scope (for example, the provider identity is unknown).'
+      : 'Runs this record\'s discovery job: You.com search and fetch, then a CrewAI agent on Parasail with the verify-reference prompt. Results within 24 hours come from cache. Nothing is sent.');
     const output = make('div', 'research-output');
-    button.addEventListener('click', () => runResearch(`/api/research?caseId=${encodeURIComponent(item.id)}`, {}, output, button));
+    button.addEventListener('click', () => runResearch(`/api/research?caseId=${encodeURIComponent(item.id)}`, {}, output, button, renderDiscoveryResult));
     section.append(make('div', 'eyebrow', 'Web research'), button, note, output);
     return section;
   }
@@ -397,8 +420,10 @@
     } catch (error) { failure = error.message || 'Research failed.'; }
     finally { button.disabled = false; button.textContent = label; }
     if (result) {
-      live.textContent = result.kind === 'event'
-        ? (result.stopped ? 'Event check stopped.' : 'Event check finished. Call ahead before sending anyone.')
+      live.textContent = result.kind === 'event' || result.kind === 'find'
+        ? (result.stopped ? 'Service search stopped.' : 'Done. Call ahead before sending anyone.')
+        : result.kind === 'ask' ? 'Done. Matching records are shown in the queue below.'
+        : result.kind === 'unsupported' ? 'That request is outside what Ghost Links can do.'
         : result.stopped ? 'Research stopped before searching.' : 'Research finished. Review the evidence before any correction request.';
       output.append(render(result));
     }
@@ -439,6 +464,85 @@
     return box;
   }
 
+  // ---- Discovery findings (Ivan's planner jobs, validated with validateVerification) ----
+  function findingCard(finding) {
+    const [title, tone] = verdictLabels[finding.verdict] || ['Unknown', 'unknown'];
+    const card = make('div', `evidence evidence-${tone}`);
+    const head = make('div', 'evidence-head');
+    head.append(make('span', `evidence-state ${tone}`, title), make('span', 'evidence-meta', `Checked ${checkedTime(finding.checkedAt)} · ${finding.pages ?? 0} pages fetched`));
+    card.append(head);
+    if (finding.summary) card.append(make('p', 'draft-message', finding.summary));
+    for (const evidence of (finding.evidence || []).slice(0, 6)) {
+      card.append(make('blockquote', 'evidence-quote', `“${evidence.quote}”`));
+      const link = externalAnchor(`${String(evidence.role).replace(/_/g, ' ')} · ${evidence.url} ↗`, evidence.url, 'evidence-link');
+      if (link) card.append(link);
+    }
+    if (finding.missingEvidence?.length) {
+      const missing = make('ul', 'route-requirements');
+      finding.missingEvidence.slice(0, 6).forEach(text => missing.append(make('li', '', text)));
+      card.append(make('div', 'eyebrow', 'Still needed'), missing);
+    }
+    if (finding.gate && finding.gate !== 'passed') card.append(make('p', 'research-error', `Model output rejected by the evidence gate (${finding.gate.replace('rejected:', '')}); no claim was kept.`));
+    return card;
+  }
+
+  function findingSection(item) {
+    const finding = findings[item.id];
+    if (!finding) return make('span');
+    const section = make('section', 'research');
+    section.append(make('div', 'eyebrow', 'Latest discovery result'), findingCard(finding));
+    return section;
+  }
+
+  function renderDiscoveryResult(result) {
+    const box = make('div', 'research-result');
+    const list = Array.isArray(result.findings) ? result.findings : [];
+    box.append(make('p', 'research-summary', result.plan
+      ? `${result.plan.ran} job(s) ran · ${result.plan.due} were due · ${result.plan.skipped?.freshCache || 0} fresh in cache · ${result.plan.eligible} eligible records`
+      : 'Discovery finished.'));
+    if (!list.length) box.append(make('p', 'research-note', result.plan?.ran === 0 ? 'Nothing was due: results under 24 hours old are reused from cache.' : 'No findings were produced.'));
+    list.slice(0, 10).forEach(finding => box.append(findingCard(finding)));
+    box.append(make('p', 'report-status', 'Findings are cited research leads, not confirmed errors. No report or message has been sent.'));
+    loadFindings();
+    return box;
+  }
+
+  // ---- Ask: "find me food services that may be at risk" ----
+  function renderAskResult(result) {
+    const box = make('div', 'research-result');
+    const flags = make('div', 'research-flags');
+    flags.append(make('span', 'research-flag', 'Request planner prompt · pending review'));
+    box.append(flags);
+    if (result.plan?.explanation) box.append(make('p', 'research-summary', result.plan.explanation));
+    if (result.plan?.serviceTerms?.length) box.append(make('p', 'research-note', `Matched names containing: ${result.plan.serviceTerms.join(', ')}`));
+    askFilter = new Set(result.matchedIds || []);
+    activeCategory = 'all'; visibleCount = 30;
+    box.append(make('p', 'event-title', `${number(result.matched || 0)} matching records shown in the queue below`));
+    if (result.selection?.caseIds?.length) {
+      box.append(make('div', 'eyebrow', 'Research these first'));
+      if (result.selection.explanation) box.append(make('p', 'research-note', result.selection.explanation));
+      for (const id of result.selection.caseIds) {
+        const item = items.find(candidate => candidate.id === id);
+        if (!item) continue;
+        const open = make('button', 'secondary-button', `${item.organization.name} · ${item.identifier.value}`);
+        open.type = 'button';
+        open.addEventListener('click', () => { selectedId = id; renderList(); elements.detail.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+        box.append(open);
+      }
+    } else if (result.selectionGate) box.append(make('p', 'research-note', 'The research shortlist was rejected by the output gate; review the filtered records directly.'));
+    const clear = make('button', 'secondary-button', 'Clear this request');
+    clear.type = 'button';
+    clear.addEventListener('click', () => { askFilter = null; $('route-output').replaceChildren(); renderList(); });
+    box.append(clear);
+    renderList();
+    return box;
+  }
+  const ask = { form: $('ask-form'), input: $('ask-input'), submit: $('ask-submit'), output: $('ask-output') };
+  if (ask.form) ask.form.addEventListener('submit', event => {
+    event.preventDefault();
+    runResearch('/api/ask', { request: ask.input.value }, ask.output, ask.submit, renderAskResult);
+  });
+
   // ---- Event check: which nearby services can still help after an event ----
   const eventStatus = {
     reported_closed: ['Reported closed', 'found'], reported_relocated: ['Reported moved', 'found'],
@@ -471,17 +575,18 @@
   function renderEventResult(result) {
     const box = make('div', 'research-result');
     if (result.stopped) { box.append(make('p', 'research-error', result.stopped)); return box; }
-    if (result.event) box.append(make('p', 'event-title', `${result.event.event_type} · ${result.event.area}`));
+    const finding = result.kind === 'find';
+    if (result.event) box.append(make('p', 'event-title', finding ? `${result.event.service_types?.join(' & ') || 'Services'} · ${result.event.area}` : `${result.event.event_type} · ${result.event.area}`));
     const services = Array.isArray(result.services) ? result.services.slice(0, 20) : [];
     const disrupted = services.filter(s => ['reported_closed', 'reported_relocated', 'reported_changed_hours'].includes(s.status));
     const available = services.filter(s => !disrupted.includes(s));
     box.append(make('p', 'research-summary', `${services.length} services found nearby · ${disrupted.length} report a disruption · checked ${checkedTime(result.observedAt)}`));
     if (disrupted.length) {
-      box.append(make('div', 'eyebrow', 'Reported disruption'));
+      box.append(make('div', 'eyebrow', finding ? 'Recent closure or change notices' : 'Reported disruption'));
       disrupted.forEach(s => box.append(serviceCard(s)));
     }
     if (available.length) {
-      box.append(make('div', 'eyebrow', 'Likely still able to help'));
+      box.append(make('div', 'eyebrow', finding ? 'Services found' : 'Likely still able to help'));
       box.append(make('p', 'research-note', 'No closure notice was found online for these. That is not proof they are open: call ahead.'));
       available.forEach(s => box.append(serviceCard(s)));
     }
@@ -499,6 +604,14 @@
     }
     if (Array.isArray(result.areaRecords) && result.areaRecords.length) box.append(make('p', 'research-note', `${result.areaRecords.length} Streetli records are in this area and were included in the search.`));
     box.append(make('p', 'report-status', 'Statuses are what public sources report. Nothing was edited or sent.'));
+    return box;
+  }
+
+  function renderRouted(result) {
+    if (result.kind === 'ask') return renderAskResult(result);
+    if (result.kind === 'event' || result.kind === 'find') return renderEventResult(result);
+    const box = make('div', 'research-result');
+    box.append(make('p', 'research-note', `${result.reason ? `${result.reason} ` : ''}Try: “food services that may be at risk”, “there was a flood on the Upper West Side”, or “food pantry in Harlem”.`));
     return box;
   }
 
@@ -607,7 +720,18 @@
     }
   }
 
-  elements.form.addEventListener('submit', event => { event.preventDefault(); query = elements.input.value; visibleCount = 30; renderList(); });
+  // One box: typing filters locally (above); submitting asks the router which flow should handle it.
+  elements.form.addEventListener('submit', event => {
+    event.preventDefault();
+    const text = elements.input.value.trim();
+    if (text.length < 3) { query = elements.input.value; visibleCount = 30; renderList(); return; }
+    query = ''; askFilter = null; visibleCount = 30; renderList();
+    runResearch('/api/route', { request: text }, $('route-output'), $('search-submit'), renderRouted);
+  });
+  document.querySelectorAll('[data-ask]').forEach(button => button.addEventListener('click', () => {
+    elements.input.value = button.dataset.ask;
+    elements.form.requestSubmit();
+  }));
   elements.input.addEventListener('input', () => { query = elements.input.value; visibleCount = 30; renderList(); });
   document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => { elements.input.value = button.dataset.prompt; query = button.dataset.prompt; activeKind = 'all'; visibleCount = 30; renderList(); }));
   document.querySelectorAll('[data-kind]').forEach(button => button.addEventListener('click', () => { activeKind = button.dataset.kind; visibleCount = 30; renderList(); }));

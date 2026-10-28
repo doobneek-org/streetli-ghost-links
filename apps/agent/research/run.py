@@ -53,9 +53,23 @@ def main() -> None:
 
     if args.stdin:
         payload = json.load(sys.stdin)
+        if payload.get("discoveryJob"):
+            from .discovery import run_job
+            result = run_job(payload["discoveryJob"], payload.get("cases", []), emit)
+            print(json.dumps({"type": "result", **result}), flush=True)
+            return
+        if payload.get("stage"):
+            from .stages import run_stage
+            emit({"at": "", "step": payload["stage"], "status": "start", "message": "Parasail reading the request via CrewAI"})
+            try:
+                output = run_stage(payload["stage"], payload["input"])
+                print(json.dumps({"type": "result", "output": output}), flush=True)
+            except Exception as error:
+                print(json.dumps({"type": "result", "error": type(error).__name__}), flush=True)
+            return
         if payload.get("eventText"):
             from .event_flow import check_event
-            result = check_event(payload["eventText"], payload.get("cases"), emit=emit)
+            result = check_event(payload["eventText"], payload.get("cases"), emit=emit, find_only=bool(payload.get("findOnly")))
             print(json.dumps({"type": "result", **result}) if args.jsonl else json.dumps(result, indent=2), flush=True)
             return
         case, manual = payload["case"], bool(payload.get("manualTest"))

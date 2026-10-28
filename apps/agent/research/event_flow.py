@@ -62,6 +62,7 @@ class StatusList(BaseModel):
 
 class EventState(BaseModel):
     text: str = ""
+    find_only: bool = False
     cases: list[dict] = []
     stopped: str | None = None
     parsed: dict = {}
@@ -117,18 +118,20 @@ class EventCheckFlow(Flow[EventState]):
                          f'Report: "{self.state.text}"\nDefault city: New York, NY.', ParsedEvent)
         except Exception as error:
             return self.stop("parse", f"Could not read the event: {type(error).__name__}")
-        if not parsed or not parsed.is_event or not parsed.area.strip():
-            return self.stop("parse", "That does not look like an event with a place. Try: 'there was a flood on the Upper West Side'.")
+        if not parsed or not parsed.area.strip() or (not parsed.is_event and not self.state.find_only):
+            return self.stop("parse", "That does not name a place. Try: 'there was a flood on the Upper West Side' or 'food pantry in Harlem'.")
+        if self.state.find_only:
+            parsed.event_type, parsed.keywords = "", []
         parsed.keywords = [k.lower() for k in (parsed.keywords or [parsed.event_type])][:5]
         # Predictable coverage: food and shelter first, unless the report names a service type.
         named = [t for t in parsed.service_types if t.split()[0] in self.state.text.lower()]
         parsed.service_types = list(dict.fromkeys(named + ["food pantry", "homeless shelter"]))[:MAX_SERVICE_TYPES]
         self.state.parsed = parsed.model_dump()
-        self.emit("parse", "done", f"{parsed.event_type} · {parsed.area} · looking for {', '.join(parsed.service_types)}")
+        self.emit("parse", "done", f"{parsed.event_type + ' · ' if parsed.event_type else ''}{parsed.area} · looking for {', '.join(parsed.service_types)}")
 
     @listen(parse)
     def news(self):
-        if self.state.stopped:
+        if self.state.stopped or self.state.find_only:
             return
         p = self.state.parsed
         self.emit("news", "start", f"Checking recent reports of the {p['event_type']}")
@@ -207,7 +210,7 @@ class EventCheckFlow(Flow[EventState]):
         targets = {}
         for s in self.state.listed:
             try:
-                hits = youcom.search(f'"{s["name"]}" closed OR {p["event_type"]} OR hours', 3, freshness="month")
+                hits = youcom.search(f'"{s["name"]}" closed OR {p["event_type"] or "temporarily"} OR hours', 3, freshness="month")
             except youcom.YouComError as error:
                 self.emit("notices", "error", f"{s['name']}: {error}")
                 hits = []
@@ -240,7 +243,7 @@ class EventCheckFlow(Flow[EventState]):
                         break
             if notices:
                 self.state.notices[name] = notices[:3]
-        self.emit("notices", "done", f"{len(self.state.notices)} services have recent pages mentioning a closure or the {p['event_type']}")
+        self.emit("notices", "done", f"{len(self.state.notices)} services have recent pages mentioning a closure" + (f" or the {p['event_type']}" if p["event_type"] else ""))
 
     @listen(check_notices)
     def assess(self):
@@ -257,7 +260,7 @@ class EventCheckFlow(Flow[EventState]):
                               "says so about that service; reported_operating only when it says the service is open; "
                               "otherwise 'unclear'. Notices about other places or older events are 'unclear'. "
                               "Quotes must be copied exactly from the excerpt."),
-                        f"Event: {p['event_type']} in {p['area']}, {p['city']}. Today is {now()[:10]}.\n\n{blocks}\n\n"
+                        f"Event: {p['event_type'] or 'none; report any recent closure or change'} in {p['area']}, {p['city']}. Today is {now()[:10]}.\n\n{blocks}\n\n"
                         "Return one status per SERVICE.", StatusList)
         except Exception as error:
             return self.emit("assess", "error", f"Assessment failed: {type(error).__name__}")
@@ -274,9 +277,9 @@ class EventCheckFlow(Flow[EventState]):
         self.emit("assess", "done", f"{disrupted} services report a disruption")
 
 
-def check_event(text: str, cases: list[dict] | None = None, emit: Emit | None = None) -> dict:
+def check_event(text: str, cases: list[dict] | None = None, emit: Emit | None = None, find_only: bool = False) -> dict:
     flow = EventCheckFlow(emit=emit, suppress_flow_events=True)
-    flow.kickoff(inputs={"text": text, "cases": cases or []})
+    flow.kickoff(inputs={"text": text, "cases": cases or [], "find_only": find_only})
     s = flow.state
     services = []
     for listed in s.listed:
@@ -286,7 +289,7 @@ def check_event(text: str, cases: list[dict] | None = None, emit: Emit | None = 
     order = ["reported_closed", "reported_relocated", "reported_changed_hours", "unclear", "reported_operating", "no_notice_found"]
     services.sort(key=lambda x: order.index(x["status"]))
     return {
-        "kind": "event", "text": s.text, "stopped": s.stopped, "event": s.parsed or None,
+        "kind": "find" if s.find_only else "event", "text": s.text, "stopped": s.stopped, "event": s.parsed or None,
         "observedAt": s.observed_at or now(), "news": s.news, "services": services,
         "areaRecords": [{"id": c.get("id"), "name": c.get("name"), "locality": c.get("locality")} for c in s.area_cases],
     }

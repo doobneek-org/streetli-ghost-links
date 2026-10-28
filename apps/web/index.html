@@ -21,31 +21,23 @@
       <h1 id="hero-title">How can I make the<br class="desktop-break"> social safety net better?</h1>
       <p class="hero-description">Start with the information that needs a second look. Explore phone numbers, emails, and websites previously flagged in Streetli.</p>
       <form id="search-form" class="search-form" role="search">
-        <label class="sr-only" for="search-input">Search historical identifier records</label>
+        <label class="sr-only" for="search-input">Ask Ghost Links or search the records</label>
         <span class="search-symbol" aria-hidden="true">⌕</span>
-        <input id="search-input" name="query" type="search" autocomplete="off" placeholder="Find broken websites, bad numbers, or an organization…">
-        <button class="primary-button search-submit" type="submit">Find records <span aria-hidden="true">↗</span></button>
+        <input id="search-input" name="query" type="search" autocomplete="off" placeholder="Food services that may be at risk · flood on the Upper West Side · food pantry in Harlem">
+        <button id="search-submit" class="primary-button search-submit" type="submit">Ask <span aria-hidden="true">↗</span></button>
       </form>
       <div class="example-prompts" aria-label="Suggested searches"><span>Try</span><button type="button" data-prompt="Find broken websites">Find broken websites</button><button type="button" data-prompt="Show bad phone numbers">Show bad phone numbers</button><button type="button" data-prompt="Find bad email addresses">Find bad email addresses</button></div>
-      <p class="search-note">Searches the loaded records. External web verification runs separately.</p>
+      <div class="example-prompts" aria-label="Suggested questions"><span>Ask</span><button type="button" data-ask="Find me food services that may be at risk">Food services that may be at risk</button><button type="button" data-ask="There was a flood on the Upper West Side">Flood on the Upper West Side</button><button type="button" data-ask="I need a food pantry in Harlem">Food pantry in Harlem</button></div>
+      <p class="search-note">Typing filters the loaded records instantly. Press Ask and Parasail, coordinated by CrewAI, decides whether to search the records, check an event, or find services with You.com.</p>
+      <div id="route-output" class="research-output route-output"></div>
     </section>
 
-    <section class="event-check" aria-labelledby="event-title">
-      <div class="eyebrow">Event check</div>
-      <h2 id="event-title">Something happened? See which services can still help.</h2>
-      <p class="pipeline-intro">Describe an event and a place. Ghost Links finds services nearby with You.com, then checks each one's recent posts for closures. Parasail, coordinated by CrewAI, reads the evidence.</p>
-      <form id="event-form" class="event-form">
-        <label class="sr-only" for="event-input">Describe the event</label>
-        <input id="event-input" type="text" autocomplete="off" required minlength="8" maxlength="300" placeholder="There was a flood on the Upper West Side">
-        <button id="event-submit" class="primary-button" type="submit">Check services</button>
-      </form>
-      <div id="event-output" class="research-output"></div>
-    </section>
 
     <section class="workbench" id="results" aria-labelledby="results-title">
       <div class="workbench-heading"><div><div class="eyebrow">The review queue</div><h2 id="results-title">A place to start fixing things.</h2></div><button id="refresh-button" class="secondary-button" type="button"><span aria-hidden="true">↻</span> Refresh records</button></div>
       <div id="source-banner" class="source-banner" role="status" aria-live="polite"><span class="loading-pulse" aria-hidden="true"></span><span id="load-status">Loading historical records from the configured source…</span></div>
       <div id="category-board" class="category-board" role="group" aria-label="Failed verifications by category"></div>
+      <div id="discovery-output" class="research-output discovery-output"></div>
       <div class="history-filters" role="group" aria-label="Filter historical record state"><button type="button" data-history-state="all" aria-pressed="true">All history <span data-state-count="all">—</span></button><button type="button" data-history-state="removed" aria-pressed="false">Removed <span data-state-count="removed">—</span></button><button type="button" data-history-state="flagged" aria-pressed="false">Flagged <span data-state-count="flagged">—</span></button></div>
       <div class="queue-toolbar"><div class="type-filters" role="group" aria-label="Filter identifier type"><button type="button" data-kind="all" aria-pressed="true">All records <span data-count="all">—</span></button><button type="button" data-kind="website" aria-pressed="false">Websites <span data-count="website">—</span></button><button type="button" data-kind="phone" aria-pressed="false">Phone numbers <span data-count="phone">—</span></button><button type="button" data-kind="email" aria-pressed="false">Emails <span data-count="email">—</span></button></div><p id="result-count" class="result-count" aria-live="polite">Waiting for records</p></div>
       <div class="queue-layout">

@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 import { once, EventEmitter } from 'node:events';
 import { createFixtureServer } from '../apps/agent/fixture-server.mjs';
 import { createResearchRunner, manualTestCase } from '../apps/agent/research-route.mjs';
+import { createDiscoveryRunner } from '../apps/agent/discovery-runner.mjs';
+import { applyPlan, cleanPlan } from '../apps/agent/ask.mjs';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // A stand-in for the Python process: records its stdin and replays scripted output.
 function fakeSpawn(lines, { code = 0 } = {}) {
@@ -29,7 +34,7 @@ const liveCase = (id, reviewState) => ({
 const liveFeed = { schemaVersion: 2, mode: 'live', generatedAt: '2026-10-28T10:00:00Z', coverage: { scope: 'retained_records_only', sourceCounts: { website: 0, phone: 2, email: 0 }, returned: 2, omitted: 0 }, cases: [liveCase('approved-1', 'approved_for_research'), liveCase('pending-1', 'review_required')] };
 
 async function withServer(options, run) {
-  const server = await createFixtureServer(options);
+  const server = await createFixtureServer({ discovery: (await fakeDiscovery(uncertainOutcome)).discovery, ...options });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   try { await run(`http://127.0.0.1:${server.address().port}`); } finally { await new Promise(resolve => server.close(resolve)); }
 }
@@ -44,22 +49,56 @@ test('fixture cases never start research', async () => {
   assert.equal(fake.calls.length, 0);
 });
 
-test('only approved live cases start research, and progress streams as NDJSON', async () => {
-  const { fake, research } = runner([
-    'some library warning',
-    JSON.stringify({ type: 'event', step: 'search', status: 'done', message: '3 results' }),
-    JSON.stringify({ type: 'result', caseId: 'approved-1', externalReferences: [] })
-  ]);
-  await withServer({ source: async () => structuredClone(liveFeed), research }, async base => {
+// A discovery runner whose "Python" is scripted, with data in a temporary folder.
+async function fakeDiscovery(outcome) {
+  const dataDir = `${await mkdtemp(join(tmpdir(), 'ghost-links-'))}/`;
+  const calls = [];
+  const run = async payload => { calls.push(payload); return typeof outcome === 'function' ? outcome(payload) : structuredClone(outcome); };
+  return { calls, dataDir, discovery: createDiscoveryRunner({ dataDir, run, available: () => true }) };
+}
+const uncertainOutcome = payload => ({
+  status: 'completed', checkedAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
+  documents: [{ id: 'doc-1', url: 'https://directory.org/pantry', text: 'Example Pantry call +12125550123 today', status: 'fetched', observedAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z') }],
+  verifications: payload.discoveryJob.caseIds.map(caseId => ({ caseId, output: { caseId, verdict: 'uncertain',
+    evidence: [{ documentId: 'doc-1', quote: 'Example Pantry call', role: 'identity' }], missingEvidence: ['A current official contact page'], summary: 'Not enough evidence.' } }))
+});
+
+test('live research runs the planner job for eligible cases only, and streams NDJSON', async () => {
+  const feed = structuredClone(liveFeed);
+  feed.cases[1].organization.name = 'Historical provider (identity unavailable)';
+  feed.cases[1].identifier.value = '+12125550199';
+  const { calls, discovery, dataDir } = await fakeDiscovery(uncertainOutcome);
+  await withServer({ source: async () => structuredClone(feed), discovery }, async base => {
     const pending = await fetch(`${base}/api/research?caseId=pending-1`, { method: 'POST' });
     assert.equal(pending.status, 409); assert.equal((await pending.json()).error, 'research_requires_approval');
     const response = await fetch(`${base}/api/research?caseId=approved-1`, { method: 'POST' });
     assert.equal(response.status, 200); assert.match(response.headers.get('content-type'), /ndjson/);
     const lines = (await response.text()).trim().split('\n').map(line => JSON.parse(line));
-    assert.deepEqual(lines.map(line => line.type), ['event', 'result']);
+    assert.equal(lines.at(-1).type, 'result'); assert.equal(lines.at(-1).findings[0].gate, 'passed');
+    const saved = await (await fetch(`${base}/api/discovery/findings`)).json();
+    assert.equal(saved.findings['approved-1'].verdict, 'uncertain');
   });
-  assert.equal(fake.calls.length, 1);
-  assert.equal(fake.calls[0].input.case.id, 'approved-1'); assert.equal(fake.calls[0].input.manualTest, false);
+  assert.equal(calls.length, 1); assert.deepEqual(calls[0].discoveryJob.caseIds, ['approved-1']);
+  const receipts = JSON.parse(await readFile(`${dataDir}discovery-results.json`, 'utf8'));
+  assert.equal(receipts[0].status, 'completed');
+});
+
+test('discovery discards outputs that fail the evidence gate and respects the cache', async () => {
+  const invented = payload => { const outcome = uncertainOutcome(payload); outcome.verifications[0].output.evidence[0].quote = 'a quote that is not on the page'; return outcome; };
+  const { calls, discovery } = await fakeDiscovery(invented);
+  const feed = structuredClone(liveFeed);
+  const first = await discovery.runDue(feed, { maxJobs: 3 });
+  assert.match(first.findings[0].gate, /^rejected:unbound_quote/); assert.equal(first.findings[0].evidence.length, 0);
+  const second = await discovery.runDue(feed, { maxJobs: 3 });
+  assert.equal(second.plan.ran, 0); assert.equal(calls.length, 1);
+});
+
+test('request planning applies the model plan in code and bounds it', () => {
+  const plan = cleanPlan({ serviceTerms: ['Pantry', 'x', 7], categories: ['compromise', 'made_up'], kinds: ['fax'], locality: 'Brooklyn', explanation: 'ok' });
+  assert.deepEqual(plan.serviceTerms, ['pantry']); assert.deepEqual(plan.categories, ['compromise']); assert.deepEqual(plan.kinds, []);
+  const scam = liveCase('scam', 'review_required'); scam.identifier = { kind: 'website', value: 'https://pantry.org/' }; scam.internal.reasonCode = 'website_scam_content';
+  const phone = liveCase('phone', 'review_required');
+  assert.deepEqual(applyPlan([phone, scam], plan).map(item => item.id), ['scam']);
 });
 
 test('manual tests are validated and labeled as tests', async () => {
@@ -85,4 +124,26 @@ test('a failed research process reports an error instead of a result', async () 
       assert.equal(lines.at(-1).type, 'error');
     });
   } finally { console.error = original; }
+});
+
+test('one box: the router decides the flow, and fixture names never reach live service search', async () => {
+  const calls = [];
+  const python = async (payload, { onEvent = () => {} } = {}) => {
+    calls.push(payload);
+    if (payload.stage === 'route-request') return { output: { route: payload.input.request.includes('flood') ? 'event' : 'records', reason: 'test' } };
+    if (payload.stage === 'plan-request') return { output: { serviceTerms: [], categories: ['compromise'], kinds: [], locality: null, explanation: 'risky websites' } };
+    if (payload.stage === 'select-case') return { output: { intent: 'browse', kinds: [], states: [], locality: null, caseIds: [], question: null, explanation: 'browse only in fixture mode' } };
+    onEvent({ type: 'event', step: 'parse', status: 'done', message: 'flood' });
+    return { kind: 'event', stopped: null, services: [], news: [] };
+  };
+  await withServer({ python }, async base => {
+    const flood = await (await fetch(`${base}/api/route`, { method: 'POST', body: JSON.stringify({ request: 'there was a flood uptown' }) })).text();
+    const lines = flood.trim().split('\n').map(line => JSON.parse(line));
+    assert.equal(lines.at(-1).kind, 'event'); assert.equal(lines.at(-1).route, 'event');
+    const eventCall = calls.find(call => call.eventText);
+    assert.deepEqual(eventCall.cases, []);
+    const risky = (await (await fetch(`${base}/api/route`, { method: 'POST', body: JSON.stringify({ request: 'risky websites' }) })).text()).trim().split('\n').map(line => JSON.parse(line));
+    assert.equal(risky.at(-1).kind, 'ask'); assert.ok(Array.isArray(risky.at(-1).matchedIds));
+    assert.equal((await fetch(`${base}/api/route`, { method: 'POST', body: JSON.stringify({ request: 'x' }) })).status, 400);
+  });
 });
