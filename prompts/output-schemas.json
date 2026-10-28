@@ -1,0 +1,43 @@
+{
+  "select-case": {
+    "type": "object", "additionalProperties": false,
+    "required": ["intent", "kinds", "states", "locality", "caseIds", "question", "explanation"],
+    "properties": {
+      "intent": {"type": "string", "enum": ["browse", "verify_external", "prepare_report", "clarify", "unsupported"]},
+      "kinds": {"type": "array", "maxItems": 3, "items": {"type": "string", "enum": ["website", "phone", "email"]}},
+      "states": {"type": "array", "maxItems": 3, "items": {"type": "string", "enum": ["flagged", "removed", "replaced"]}},
+      "locality": {"type": ["string", "null"]},
+      "caseIds": {"type": "array", "maxItems": 3, "items": {"type": "string"}},
+      "question": {"type": ["string", "null"]},
+      "explanation": {"type": "string", "maxLength": 600}
+    }
+  },
+  "verify-reference": {
+    "type": "object", "additionalProperties": false,
+    "required": ["caseId", "verdict", "evidence", "missingEvidence", "summary"],
+    "properties": {
+      "caseId": {"type": "string"},
+      "verdict": {"type": "string", "enum": ["stale_reference", "historical_mention", "different_entity", "not_present", "uncertain"]},
+      "evidence": {"type": "array", "maxItems": 6, "items": {"type": "object", "additionalProperties": false,
+        "required": ["documentId", "quote", "role"], "properties": {
+          "documentId": {"type": "string"}, "quote": {"type": "string", "minLength": 8, "maxLength": 400},
+          "role": {"type": "string", "enum": ["current_association", "identity", "contradiction", "historical_context", "current_correction"]}
+        }}},
+      "missingEvidence": {"type": "array", "maxItems": 6, "items": {"type": "string", "maxLength": 300}},
+      "summary": {"type": "string", "maxLength": 800}
+    }
+  },
+  "prepare-correction": {
+    "type": "object", "additionalProperties": false,
+    "required": ["caseId", "disposition", "routeId", "subject", "body", "evidenceDocumentIds", "needsHumanApproval", "missingEvidence"],
+    "properties": {
+      "caseId": {"type": "string"},
+      "disposition": {"type": "string", "enum": ["draft_ready", "needs_review", "no_action"]},
+      "routeId": {"type": ["string", "null"]}, "subject": {"type": ["string", "null"], "maxLength": 200},
+      "body": {"type": ["string", "null"], "maxLength": 2400},
+      "evidenceDocumentIds": {"type": "array", "maxItems": 6, "items": {"type": "string"}},
+      "needsHumanApproval": {"type": "boolean", "const": true},
+      "missingEvidence": {"type": "array", "maxItems": 6, "items": {"type": "string", "maxLength": 300}}
+    }
+  }
+}

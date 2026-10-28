@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "status": "ready_for_runtime_integration_not_model_evaluated",
+  "stages": {
+    "select-case": "select-case.md",
+    "verify-reference": "verify-reference.md",
+    "prepare-correction": "prepare-correction.md"
+  },
+  "outputSchemas": "output-schemas.json",
+  "evaluationCases": "evaluations.json",
+  "outputGate": "../packages/contracts/research-output.mjs",
+  "defaults": {
+    "maxSelectedCases": 3,
+    "maxSearchQueriesPerCase": 2,
+    "maxFetchedPagesPerCase": 3,
+    "maximumEvidenceAgeHours": 24
+  }
+}
