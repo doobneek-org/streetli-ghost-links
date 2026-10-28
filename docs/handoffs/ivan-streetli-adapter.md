@@ -2,6 +2,58 @@
 
 Newest entry first. Protocol: [README.md](README.md).
 
+## 2026-10-29 00:20 (EDT) · Streetli records open inline; provider keys received
+
+**Branch / commit:** `codex/streetli-adapter` @ `336b416`, also on `main`.
+Worker version `f8817994-b756-4e41-9816-573ba51d7df7`.
+
+**Works now:** selecting a flagged record and pressing "Open Streetli record"
+opens the location in a read-only panel over the dashboard, unauthenticated.
+Verified on `you.doobneek.org` against live records: address, neighbourhood,
+phones, services and validation date render, and Escape closes the panel. The
+external editor link remains as "Open Streetli editor ↗". Suite is 84/84.
+
+The data is the same source the Sheets modal uses: upstream marks
+`location-modal-details` as `publicRead` and forwards no Authorization header.
+The Worker reads it server-side at `GET /api/location?caseId=…` and the page
+fetches that same-origin, so the page CSP stays `connect-src 'self'` and no
+CORS entry, token or cookie is involved. The upstream id is always taken from
+the case feed, never from the caller, so the route cannot be aimed elsewhere.
+`projectLocationDetail` in `packages/contracts/location-detail.mjs` resolves
+upstream's timestamp-versioned fields to their newest value and trims ~232KB
+to ~2KB, and strips markup — upstream free text contains anchors.
+
+**Timothy, two things in your territory, both additive:**
+
+1. `apps/agent/fixture-server.mjs` gains the same `/api/location` route, so
+   `npm run dev` behaves like the deployed site instead of failing on a button
+   that works in production. 20 lines, mirroring the `/api/reporting` block.
+2. `apps/web/app.js` (+13) and `apps/web/index.html` (+2) wire the button and
+   load the new files. `apps/web/styles.css` is deliberately untouched, so
+   in-progress theme work cannot conflict. The panel's styles live in the new
+   `apps/web/location-detail.css`.
+
+**Provider keys:** received your `.env` values for `YDC_API_KEY`,
+`PARASAIL_API_KEY`, `PARASAIL_BASE_URL`, `PARASAIL_MODEL`,
+`PARASAIL_REASONING_EFFORT` and `CREWAI_DISABLE_TELEMETRY`. They are in the
+local ignored `.env` only; they are not in Git and must not be pasted into any
+tracked file, log entry or pull request. `ONE_SECRET` is still blank. These
+read as hackathon-issued day-pass credentials, so treat them as short-lived
+and plan to rotate or discard after the event.
+
+**Pending:** the research backend itself is still not deployed, so `/health`
+reports `researchBackendConfigured: false` and research routes return
+`research_backend_unavailable`. The keys above are not yet in Google Secret
+Manager, because the runtime that consumes them does not exist yet.
+
+**Needs from Timothy:** 1. The origin URL once your backend is reachable over
+HTTPS. 2. Confirmation of which of those variable names the runtime actually
+reads, so the deployed secret names match rather than being guessed.
+
+**Next (Ivan):** load the provider keys into Secret Manager and set
+`RESEARCH_BACKEND_URL`, `RESEARCH_BACKEND_TOKEN` and `MAINTAINER_TOKEN` on the
+Worker once the backend origin exists.
+
 ## 2026-10-28 22:40 (EDT) · Research backend integration is yours; here is the contract
 
 Correcting my previous entry: its **Next** line put the hosted research backend
