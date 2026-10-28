@@ -103,6 +103,7 @@
     const toggle = $('halloween-toggle');
     if (toggle) { toggle.setAttribute('aria-pressed', String(spooky)); toggle.textContent = spooky ? '☀️ Normal mode' : '🎃 Halloween mode'; }
     renderLeaderboard();
+    if (typeof setQueueOpen === 'function') setQueueOpen(queueOpen);
   }
   const halloweenToggle = $('halloween-toggle');
   if (halloweenToggle) halloweenToggle.addEventListener('click', () => {
@@ -590,6 +591,24 @@
     return box;
   }
 
+  // ---- Review queue visibility: hidden for people seeking help, opened for maintainers ----
+  let queueOpen = false;
+  try { queueOpen = localStorage.getItem('ghost-links-hero') === 'on'; } catch { queueOpen = false; }
+  function setQueueOpen(open, { remember = false, scroll = false } = {}) {
+    queueOpen = open;
+    const queue = $('results'); const pipelineTest = $('pipeline-test'); const toggle = $('hero-toggle');
+    if (queue) queue.hidden = !open;
+    if (pipelineTest) pipelineTest.hidden = !open;
+    if (toggle) {
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.textContent = open ? t('Hide the review queue', 'Close the haunted queue') : t('🦸 Be a hero: fix outdated listings', '👻 Become a ghost buster');
+    }
+    if (remember) { try { localStorage.setItem('ghost-links-hero', open ? 'on' : 'off'); } catch { /* optional */ } }
+    if (open && scroll && queue?.scrollIntoView) queue.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  const heroToggle = $('hero-toggle');
+  if (heroToggle) heroToggle.addEventListener('click', () => setQueueOpen(!queueOpen, { remember: true, scroll: !queueOpen }));
+
   // ---- Discovery findings (Ivan's planner jobs, validated with validateVerification) ----
   function findingCard(finding) {
     const tone = verdictLabels[finding.verdict]?.[1] || 'unknown';
@@ -636,6 +655,7 @@
 
   // ---- Ask: "find me food services that may be at risk" ----
   function renderAskResult(result) {
+    setQueueOpen(true, { scroll: false });
     const box = make('div', 'research-result');
     const flags = make('div', 'research-flags');
     flags.append(make('span', 'research-flag', 'Request planner prompt · pending review'));
@@ -761,6 +781,7 @@
   }
 
   function renderEventResult(result) {
+    setQueueOpen(false);
     const box = make('div', 'research-result');
     if (result.stopped) { box.append(make('p', 'research-error', result.stopped)); return box; }
     const finding = result.kind === 'find';
@@ -959,11 +980,12 @@
     elements.form.requestSubmit();
   }));
   elements.input.addEventListener('input', () => { query = elements.input.value; visibleCount = 30; renderList(); });
-  document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => { elements.input.value = button.dataset.prompt; query = button.dataset.prompt; activeKind = 'all'; visibleCount = 30; renderList(); }));
+  document.querySelectorAll('[data-prompt]').forEach(button => button.addEventListener('click', () => { setQueueOpen(true); elements.input.value = button.dataset.prompt; query = button.dataset.prompt; activeKind = 'all'; visibleCount = 30; renderList(); }));
   document.querySelectorAll('[data-kind]').forEach(button => button.addEventListener('click', () => { activeKind = button.dataset.kind; visibleCount = 30; renderList(); }));
   document.querySelectorAll('[data-history-state]').forEach(button => button.addEventListener('click', () => { activeState = button.dataset.historyState; stateChosen = true; visibleCount = 30; renderList(); }));
   elements.more.addEventListener('click', () => { visibleCount += 30; renderList(); });
   elements.refresh.addEventListener('click', () => loadCases(true));
   applySpooky();
+  setQueueOpen(queueOpen);
   loadCases();
 })();

@@ -146,3 +146,5 @@ main{max-width:1320px;margin:auto;padding:0 46px}.hero{padding:64px 0 52px;max-w
 .demo-toggle{display:inline-flex;gap:6px;align-items:center;font-size:11px;color:var(--secondary);margin-top:8px;cursor:pointer}
 .demo-banner{font-size:12px;font-weight:600;color:var(--amber);background:var(--soft-amber);padding:8px 11px;border-radius:6px;margin:0 0 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 @media (max-width:430px){.brand{white-space:nowrap;font-size:15px}.brand-byline{white-space:nowrap}}
+.hero-toggle{margin-top:12px}
+.workbench[hidden],.pipeline-test[hidden]{display:none}

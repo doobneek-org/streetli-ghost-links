@@ -28,6 +28,7 @@
       </form>
       <div class="example-prompts" aria-label="Suggested searches"><span>Try</span><button type="button" data-prompt="Find broken websites">Find broken websites</button><button type="button" data-prompt="Show bad phone numbers">Show bad phone numbers</button><button type="button" data-prompt="Find bad email addresses">Find bad email addresses</button></div>
       <div class="example-prompts" aria-label="Suggested questions"><span>Ask</span><button type="button" data-ask="Find me food services that may be at risk">Food services that may be at risk</button><button type="button" data-ask="There was a flood on the Upper West Side">Flood on the Upper West Side</button><button type="button" data-ask="I need a food pantry in Harlem">Food pantry in Harlem</button></div>
+      <button id="hero-toggle" class="secondary-button hero-toggle" type="button" aria-expanded="false" aria-controls="results">🦸 Be a hero: fix outdated listings</button>
       <p class="search-note" data-spooky="Typing sifts the crypt instantly. Press Summon and Parasail, guided by a CrewAI coven, decides whether to hunt haunted records, check a calamity, or seek safe havens with You.com.">Typing filters the loaded records instantly. Press Ask and Parasail, coordinated by CrewAI, decides whether to search the records, check an event, or find services with You.com.</p>
       <label class="demo-toggle"><input id="demo-mode" type="checkbox"> <span data-spooky="⚡ Demo mode: summon saved visions when available">⚡ Demo mode: show saved results when available</span></label>
       <p id="research-capability-note" class="search-note" role="status" hidden></p>
@@ -35,7 +36,7 @@
     </section>
 
 
-    <section class="workbench" id="results" aria-labelledby="results-title">
+    <section class="workbench" id="results" aria-labelledby="results-title" hidden>
       <div class="workbench-heading"><div><div class="eyebrow" data-spooky="The haunted queue">The review queue</div><h2 id="results-title" data-spooky="Ghosts waiting to be busted.">A place to start fixing things.</h2></div><button id="refresh-button" class="secondary-button" type="button"><span aria-hidden="true">↻</span> Refresh records</button></div>
       <div id="source-banner" class="source-banner" role="status" aria-live="polite"><span class="loading-pulse" aria-hidden="true"></span><span id="load-status">Loading historical records from the configured source…</span></div>
       <section id="leaderboard" class="leaderboard" aria-labelledby="leaderboard-title" hidden></section>
@@ -56,7 +57,7 @@
       <p class="coverage-note" id="coverage-note">Coverage: retained records only. Past flags do not establish a current error.</p>
     </section>
 
-    <section class="pipeline-test" aria-labelledby="pipeline-test-title">
+    <section class="pipeline-test" id="pipeline-test" aria-labelledby="pipeline-test-title" hidden>
       <div class="eyebrow">Developer check</div>
       <h2 id="pipeline-test-title" data-spooky="Test the ghost-hunting rig">Test the research pipeline</h2>
       <p class="pipeline-intro">Runs a real You.com search and a CrewAI/Parasail check on an identifier you enter. It is not a Streetli case, and any correction draft is marked test-only.</p>

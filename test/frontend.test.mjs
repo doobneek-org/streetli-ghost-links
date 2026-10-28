@@ -231,3 +231,16 @@ test('large queues render incrementally and preserve the actual total', async ()
   assert.equal(app.by('data-count', 'all').textContent, '35');
   app.$('show-more').click(); assert.equal(app.$('record-list').children.length, 35); assert.equal(app.$('show-more').hidden, true);
 });
+
+test('the review queue starts hidden for people seeking help and opens with Be a hero', async () => {
+  const app = await startApp(makeFeed([makeCase('queue-a', 'website')]));
+  assert.equal(app.$('results').hidden, true);
+  assert.equal(app.$('pipeline-test').hidden, true);
+  app.$('hero-toggle').click();
+  assert.equal(app.$('results').hidden, false);
+  assert.equal(app.$('hero-toggle').getAttribute('aria-expanded'), 'true');
+  app.$('hero-toggle').click();
+  assert.equal(app.$('results').hidden, true);
+  app.by('data-prompt', 'Show bad phone numbers').click();
+  assert.equal(app.$('results').hidden, false);
+});
