@@ -6,6 +6,13 @@ dataset. A `saved_scan` case is an unconfirmed saved observation with its origin
 review time. It does not claim when a domain changed, that the provider operates
 the replacement site, or that another directory is currently wrong.
 
+Saved direct-website associations can remain in this baseline after internal
+replacement or removal when the original collection was bound to the same
+public provider and branch. These use `scan_historical_reference`, keep
+`state: flagged` and have no correction date: they record a historical flag,
+not a claim that the URL is still listed internally or a known removal time.
+Fresh external research must determine where the former value remains online.
+
 External discovery is a separate stage. A public-web search may investigate an
 unconfirmed flag without first certifying it as an error. Reporting still needs
 current evidence, a supported reporting route and deliberate human action.

@@ -34,8 +34,11 @@ baseline. A per-record manual dataset is not required. Use the deterministic
 `buildDiscoveryPlan` helper and trusted `researchCaseIds` scope described in
 `docs/external-discovery.md`; keep source flags unconfirmed while researching.
 `saved_scan` is an additional v2 provenance value for automatically imported,
-current-bound saved website findings. It must remain `flagged`, with no
+identity-bound saved website findings. It must remain `flagged`, with no
 correction date. It is neither a confirmed correction nor a ledger verdict.
+`scan_historical_reference` preserves a former direct website association after
+it disappears internally, when the saved and current public provider/branch
+identity match. This does not assert that the old URL is still in Streetli.
 
 Precompute discovery independently of the user's prompt: deduplicate shared
 identifiers, reuse fresh saved results, invalidate changed source bindings, and
