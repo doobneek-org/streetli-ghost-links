@@ -137,3 +137,5 @@ main{max-width:1320px;margin:auto;padding:0 46px}.hero{padding:64px 0 52px;max-w
 .leader-points{grid-row:1/3;grid-column:4;font-weight:700;font-size:15px;color:var(--green)}
 .leaderboard-empty{font-size:12px;color:var(--secondary)}
 @media (max-width:520px){.leaderboard-row{grid-template-columns:30px 1fr auto}.leader-title{grid-column:2}.leader-stats{grid-column:2/3}.leader-points{grid-column:3}}
+.service-distance{margin-left:auto;font-size:11px;font-weight:650;color:var(--green);white-space:nowrap}
+.service-type{font-size:10px;color:var(--secondary);margin:0;text-transform:capitalize}

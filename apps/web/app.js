@@ -645,7 +645,9 @@
     const card = make('div', `evidence evidence-${tone}`);
     const head = make('div', 'evidence-head');
     head.append(make('span', `evidence-state ${tone}`, title), make('strong', 'service-name', service.name));
+    if (typeof service.distanceMiles === 'number') head.append(make('span', 'service-distance', `≈ ${service.distanceMiles} mi away`));
     card.append(head);
+    if (service.serviceType) card.append(make('p', 'service-type', service.serviceType));
     const contact = [service.address, service.phone].filter(Boolean).join(' · ');
     if (contact) card.append(make('p', 'service-address', contact));
     if (Array.isArray(service.checks) && service.checks.length) {
@@ -687,6 +689,7 @@
     const services = Array.isArray(result.services) ? result.services.slice(0, 20) : [];
     const disrupted = services.filter(s => ['reported_closed', 'reported_relocated', 'reported_changed_hours'].includes(s.status));
     const available = services.filter(s => !disrupted.includes(s));
+    if (result.event?.service_types?.length) box.append(make('p', 'research-note', `${result.kind === 'event' ? t(`What someone affected by a ${result.event.event_type} may need`, `What a soul touched by this ${result.event.event_type} may need`) : 'Looking for'}: ${result.event.service_types.join(' · ')}. Closest first.`));
     if (result.searchedArea) box.append(make('p', 'research-note', `Few services are listed in ${result.event?.area || 'that area'} itself, so this also includes ${result.searchedArea}.`));
     box.append(make('p', 'research-summary', `${services.length} services found nearby · ${disrupted.length} report a disruption · checked ${checkedTime(result.observedAt)}`));
     if (disrupted.length) {
