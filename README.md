@@ -1,8 +1,61 @@
 # Streetli Ghost Links
 
+**Old phone numbers, emails and websites keep haunting the web after a service changes them.
+Someone in need calls a dead number or visits a hijacked site. Ghost Links hunts those ghosts
+down, and helps people affected by an emergency find services that can still help.**
+
+Built at *Hack with YOU: Halloween Edition* (Track 3, The Open Haunt) on Streetli's live NYC
+community-service data. 3-minute walkthrough: [docs/demo-script.md](docs/demo-script.md).
+
+## What it does
+
+One box. Typing filters the records instantly; pressing **Ask** lets a Parasail model,
+coordinated by CrewAI, decide what you meant:
+
+| You type | Ghost Links runs |
+| --- | --- |
+| "food services that may be at risk" | **Records**: a request planner turns words into a filter over Streetli's flagged records; Streetli's `select-case` prompt picks the top three to research |
+| "there was a fire in my building in SoHo" | **Event**: works out what an affected person needs (emergency shelter, disaster relief, clothing), finds nearby services, checks each for recent closure notices, sorts **closest first** |
+| "food pantry in Harlem" | **Find services**: the same search without an event |
+
+For maintainers: a dashboard groups failed verifications (possible compromise, broken websites,
+bad phones/emails, automated scan leads); **Research the web** runs a bounded discovery job
+(You.com search and fetch → CrewAI/Parasail with Streetli's `verify-reference` prompt → evidence
+gate) and shows where an old contact is *still* listed, with exact quotes. Reviewers record
+decisions, and **One** turns findings into action. A 🎃 Halloween mode adds a ghost-buster
+leaderboard.
+
+## Why each partner is load-bearing
+
+| Partner | Role | Without it |
+| --- | --- | --- |
+| **You.com** | Search and Contents: find pages still showing an old contact; find services near an event; read their closure notices | No evidence, no services |
+| **Parasail** | Every judgment: routing the request, planning filters, verifying evidence with exact quotes, reading notices, deciding what an affected person needs | Nothing interprets the evidence |
+| **CrewAI** | Flows and agents coordinating search → fetch → match → verify → draft, with real progress events and routing on results | No bounded, routed pipeline |
+| **One** | On a click: Discord review ticket to the team, Gmail "email me this list" and progress report, Google Sheets events tracker and action list | Findings stay on screen; nothing gets fixed |
+
+Safety by design: findings are cited leads, not accusations; every quote must appear verbatim on
+a freshly fetched page; generic scan flags are never shown as compromise; nothing is sent, edited
+or reported without a person clicking; keys stay server-side.
+
+## Quick start
+
+```sh
+npm start                                   # Node 20.19+; live Streetli data needs no token
+cd apps/agent && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Python 3.10–3.13
+```
+
+Put `YDC_API_KEY`, `PARASAIL_API_KEY`, `PARASAIL_MODEL` (e.g. `parasail-glm-53`) and optionally
+`ONE_SECRET` in `.env` (see `.env.example`), open <http://127.0.0.1:4317/>, and run `npm test`
+(no test calls a paid provider). One setup: [agent README](apps/agent/README.md#one-actions-discord-gmail-google-sheets).
+
+---
+
+## Background
+
 A collaboration starter for finding outdated community-service contact information that remains online after it was removed or replaced in Streetli.
 
-The dev app loads Streetli's shared live phone, email, and website case feed by default, supports prompt/text search and state/type filters, and shows record details with reporting guidance. No Streetli token or Firebase credentials are needed. Set `STREETLI_CASES_MODE=fixture` for offline fictional examples. Tim's research worker connects You.com Search/Contents and CrewAI/Parasail to bounded discovery jobs; it requires the separate Python setup and sponsor keys described in [agent setup](apps/agent/README.md). Website reporting guidance includes a passive registrar lookup. The app does not submit reports or change Streetli; the One action remains pending.
+The dev app loads Streetli's shared live phone, email, and website case feed by default, supports prompt/text search and state/type filters, and shows record details with reporting guidance. No Streetli token or Firebase credentials are needed. Set `STREETLI_CASES_MODE=fixture` for offline fictional examples. Tim's research worker connects You.com Search/Contents and CrewAI/Parasail to bounded discovery jobs; it requires the separate Python setup and sponsor keys described in [agent setup](apps/agent/README.md). Website reporting guidance includes a passive registrar lookup. The app does not submit reports or change Streetli; One actions run only on an explicit click.
 
 ## Run locally
 
@@ -31,7 +84,7 @@ See [automatic discovery](docs/external-discovery.md).
 | Path | Purpose |
 | --- | --- |
 | `apps/web/` | Runnable prompt-first historical case browser |
-| `apps/agent/` | Local server, private-feed consumer, reporting routes, future sponsor integrations |
+| `apps/agent/` | Local server, research runtime (You.com, CrewAI, Parasail), discovery worker, One actions |
 | `packages/contracts/` | Versioned case contract and validation |
 | `fixtures/` | Synthetic demo cases |
 | `docs/collaboration.md` | Ownership, integration boundary, and delivery checklist |
