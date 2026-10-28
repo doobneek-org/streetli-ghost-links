@@ -147,3 +147,14 @@ test('one box: the router decides the flow, and fixture names never reach live s
     assert.equal((await fetch(`${base}/api/route`, { method: 'POST', body: JSON.stringify({ request: 'x' }) })).status, 400);
   });
 });
+
+test('found services are marked at risk only when they match a live Streetli flag', async () => {
+  const { annotateRisk } = await import('../apps/agent/ask.mjs');
+  const service = { name: 'Pantry', website: 'https://www.pantry.org/hours', phone: '(212) 555-0123',
+    checks: [{ field: 'phone', state: 'listed', detail: 'x' }, { field: 'website', state: 'listed', detail: 'x' }] };
+  const feed = structuredClone(liveFeed);
+  const marked = annotateRisk([service], feed)[0];
+  assert.equal(marked.checks[0].state, 'at_risk'); assert.match(marked.checks[0].detail, /phone disconnected/);
+  assert.equal(marked.checks[1].state, 'listed');
+  assert.equal(annotateRisk([service], { ...feed, mode: 'fixture' })[0].checks[0].state, 'listed');
+});

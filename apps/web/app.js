@@ -558,7 +558,26 @@
     const head = make('div', 'evidence-head');
     head.append(make('span', `evidence-state ${tone}`, title), make('strong', 'service-name', service.name));
     card.append(head);
-    if (service.address) card.append(make('p', 'service-address', service.address));
+    const contact = [service.address, service.phone].filter(Boolean).join(' · ');
+    if (contact) card.append(make('p', 'service-address', contact));
+    if (Array.isArray(service.checks) && service.checks.length) {
+      const risky = service.checks.filter(check => check.state === 'at_risk').length;
+      const confirmed = service.checks.filter(check => check.state === 'confirmed').length;
+      card.append(make('div', 'eyebrow', risky ? `What we checked · ${risky} may be at risk` : `What we checked · ${confirmed} confirmed`));
+      const list = make('ul', 'checks');
+      for (const check of service.checks.slice(0, 8)) {
+        const row = make('li', `check check-${check.state}`);
+        row.append(make('span', 'check-icon', ({ confirmed: '✓', listed: '◐', at_risk: '⚠', missing: '—' })[check.state] || '·'),
+          make('span', 'check-field', check.field), make('span', 'check-detail', check.detail));
+        if (check.listedOn && check.state !== 'missing') {
+          const source = externalAnchor(`${hostOf(check.listedOn)}${check.listedOnAge ? ` · ${listedDate(check.listedOnAge)}` : ''}`, check.listedOn, 'check-source');
+          if (source) row.append(source);
+        }
+        list.append(row);
+      }
+      card.append(list);
+      card.append(make('p', 'evidence-meta', '✓ confirmed on the service’s own website · ◐ listed by a directory only · ⚠ may be at risk · — not available'));
+    }
     if (service.quote) {
       card.append(make('blockquote', 'evidence-quote', `“${service.quote}”`));
       const source = externalAnchor(`${hostOf(service.url)} ↗`, service.url, 'evidence-link');

@@ -70,3 +70,27 @@ export async function answerRequest(request, feed, { runStage, eligibleCaseIds =
   }
   return result;
 }
+
+// Marks a found service's phone or website "at risk" when it matches an identifier
+// Streetli has flagged. Live data only: fixture identifiers are fictional.
+const hostOf = value => { try { return new URL(value).hostname.toLowerCase().replace(/^www\./, ''); } catch { return ''; } };
+const tenDigits = value => { const digits = String(value || '').replace(/\D/g, ''); return digits.length >= 10 ? digits.slice(-10) : ''; };
+
+export function annotateRisk(services, feed) {
+  if (feed?.mode !== 'live' || !Array.isArray(services)) return services;
+  const byHost = new Map(); const byPhone = new Map();
+  for (const item of feed.cases) {
+    if (item.identifier.kind === 'website' && hostOf(item.identifier.value)) byHost.set(hostOf(item.identifier.value), item);
+    if (item.identifier.kind === 'phone' && tenDigits(item.identifier.value)) byPhone.set(tenDigits(item.identifier.value), item);
+  }
+  return services.map(service => {
+    const matches = { website: byHost.get(hostOf(service.website)), phone: byPhone.get(tenDigits(service.phone)) };
+    if (!matches.website && !matches.phone) return service;
+    const checks = (service.checks || []).map(check => {
+      const item = matches[check.field];
+      return item ? { ...check, state: 'at_risk', caseId: item.id,
+        detail: `Streetli flagged this ${check.field} (${item.internal.reasonCode.replace(/_/g, ' ')}, ${item.internal.state})` } : check;
+    });
+    return { ...service, checks };
+  });
+}

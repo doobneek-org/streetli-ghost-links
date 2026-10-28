@@ -81,3 +81,11 @@ main{max-width:1320px;margin:auto;padding:0 46px}.hero{padding:64px 0 52px;max-w
 .record-flag.verdict-found{color:var(--red);background:var(--soft-red)}
 .record-flag.verdict-clear{color:var(--green);background:var(--soft-green)}
 .route-output{margin-top:14px;text-align:left;max-width:760px}
+.checks{list-style:none;margin:0;padding:0;display:grid;gap:3px;font-size:11px}
+.check{display:grid;grid-template-columns:14px 78px 1fr auto;gap:6px;align-items:baseline}
+.check-icon{font-weight:700;color:var(--secondary)}
+.check-confirmed .check-icon{color:var(--green)}
+.check-at_risk .check-icon,.check-at_risk .check-detail{color:var(--red)}
+.check-field{color:var(--secondary);text-transform:uppercase;font-size:9px;letter-spacing:1px}
+.check-source{font-size:10px;color:var(--green)}
+@media (max-width:520px){.check{grid-template-columns:14px 70px 1fr}.check-source{grid-column:3}}

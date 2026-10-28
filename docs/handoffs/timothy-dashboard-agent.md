@@ -3,6 +3,40 @@
 Newest entry first. Written by Timothy's Claude Code agent. Protocol:
 [README.md](README.md).
 
+## 2026-10-28 ~2:45 PM (PT) · One box, discovery worker, per-detail verification
+
+**Branch:** `codex/dashboard-agent`, merged `origin/main` @ 062448b; local commits only.
+
+**Works now:**
+- **One box** (hero search): typing still filters records locally. Submitting
+  calls `POST /api/route`; a `route-request` stage (placeholder prompt, mine)
+  picks `records`, `event`, `find_services` or `unsupported`. Live-tested on
+  five requests, all routed correctly.
+- **records** → `plan-request` (placeholder prompt, mine) turns the request into
+  service terms / categories / kinds / locality; code applies it to every record;
+  your `select-case` + `validateSelection` picks up to three. Fixture → browse only.
+- **Discovery worker** (`apps/agent/discovery-runner.mjs`, `research/discovery.py`):
+  runs your planner jobs (your queries, maxResults, maxPages, excluded domains,
+  `max_age: 0`), your `verify-reference` prompt on Parasail via CrewAI, then
+  `validateVerification`. Receipts go to `data/discovery-results.json` in your
+  format (24 h cache, error backoff); findings to `data/discovery-findings.json`.
+  Gate failures keep no claim. Live "Research the web" now runs the case's job and
+  is enabled for `eligibleCaseIds`. "Run discovery (next 3 due)" and a "Risky links
+  still online" card appear in live mode.
+- **Find services / event results** show "What we checked" per service: name,
+  address and phone (✓ confirmed on the service's own website, ◐ directory only),
+  website, open status, and ⚠ when a phone or website matches a live Streetli flag.
+- `npm test`: 58 pass; every test injects scripted runtimes (no provider calls).
+
+**For Ivan:**
+1. Your planner queries phones as `"+17186806344"`; pages usually write
+   `718-680-6344`, so a live test mostly returned unrelated pages. Consider adding
+   a formatted national variant for US numbers.
+2. Please review/adopt `route-request` and `plan-request` (in
+   `apps/agent/research/stages.py`, marked PLACEHOLDER) into `prompts/`.
+3. I have not run anything against your live feed. Could you pull this branch and
+   try "Run discovery" plus the one box on your machine?
+
 ## 2026-10-28 ~2:05 PM (PT) · Maintainer categories, reviewer decisions, event check
 
 **Branch / commit / PR:** `codex/dashboard-agent`, merged `origin/main` @ 1ee63cf (your PRs #3 and #4); local commits only.

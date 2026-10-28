@@ -40,6 +40,7 @@ class ListedService(BaseModel):
     name: str = Field(description="Exact service or organization name as written in the excerpt")
     service_type: str
     address: str = Field(description="Street address if the excerpt gives one, else ''")
+    phone: str = Field(description="Phone number exactly as written in the excerpt, else ''")
     website: str = Field(description="The service's own website URL if the excerpt gives one, else ''")
     source_url: str = Field(description="The PAGE url the service was listed on")
 
@@ -71,6 +72,7 @@ class EventState(BaseModel):
     notices: dict[str, list[dict]] = {}
     statuses: dict[str, dict] = {}
     area_cases: list[dict] = []
+    own_pages: dict[str, str] = {}
     observed_at: str = ""
 
 
@@ -190,7 +192,7 @@ class EventCheckFlow(Flow[EventState]):
             if name.lower() in names or not any(name.lower() in t.lower() for t in texts.values()):
                 continue
             names.add(name.lower())
-            listed.append({"name": name, "serviceType": s.service_type[:80], "address": s.address[:200],
+            listed.append({"name": name, "serviceType": s.service_type[:80], "address": s.address[:200], "phone": s.phone[:40],
                            "website": s.website if s.website.startswith(("http://", "https://")) else "",
                            "listedOn": s.source_url, "listedOnAge": ages.get(s.source_url, "")})
         self.state.listed = listed[:MAX_SERVICES]
@@ -231,6 +233,8 @@ class EventCheckFlow(Flow[EventState]):
             for url in urls:
                 text = " ".join(pages.get(url, "").split())
                 if url == websites.get(name):
+                    if text:
+                        self.state.own_pages[name] = text
                     # The service's own site: any disruption notice on it is about the service.
                     notices += [{"url": url, "excerpt": x} for x in excerpts_for(text, words, limit=2)]
                     continue
@@ -277,6 +281,45 @@ class EventCheckFlow(Flow[EventState]):
         self.emit("assess", "done", f"{disrupted} services report a disruption")
 
 
+def _digits(value: str) -> str:
+    digits = re.sub(r"\D", "", value or "")
+    return digits[-10:] if len(digits) >= 10 else ""
+
+
+def field_checks(service: dict, own_text: str, observed_at: str) -> list[dict]:
+    """What was verified for one service. Code checks only; no model judgment."""
+    own = own_text.lower()
+    own_digits = re.sub(r"\D", "", own_text)
+    source = {"listedOn": service["listedOn"], "listedOnAge": service.get("listedOnAge", "")}
+    checks = [{"field": "name", "state": "listed", "detail": "Name appears on the listing page", **source}]
+    address = service.get("address", "")
+    if not address:
+        checks.append({"field": "address", "state": "missing", "detail": "No address on the listing"})
+    else:
+        number = re.match(r"\s*(\d+)", address)
+        street = re.findall(r"\b(\d+(?:st|nd|rd|th)|[A-Za-z]{4,})\b", address)
+        confirmed = own and number and number.group(1) in own and street and street[0].lower() in own
+        checks.append({"field": "address", "state": "confirmed" if confirmed else "listed",
+                       "detail": "Also on the service's own website" if confirmed else "Only on the directory listing", **source})
+    phone = _digits(service.get("phone", ""))
+    if not phone:
+        checks.append({"field": "phone", "state": "missing", "detail": "No phone on the listing"})
+    else:
+        confirmed = bool(own_digits) and phone in own_digits
+        checks.append({"field": "phone", "state": "confirmed" if confirmed else "listed",
+                       "detail": "Also on the service's own website" if confirmed else "Only on the directory listing", **source})
+    checks.append({"field": "website", "state": "listed" if service.get("website") else "missing",
+                   "detail": "From the directory listing" if service.get("website") else "No website on the listing",
+                   **(source if service.get("website") else {})})
+    status = service.get("status", "no_notice_found")
+    checks.append({"field": "open status",
+                   "state": "at_risk" if status in ("reported_closed", "reported_relocated", "reported_changed_hours")
+                   else "confirmed" if status == "reported_operating" else "listed",
+                   "detail": {"no_notice_found": "No closure notice found in recent pages", "unclear": "A recent notice exists but is unclear"}.get(
+                       status, status.replace("reported_", "Reported ").replace("_", " ")), "checkedAt": observed_at})
+    return checks
+
+
 def check_event(text: str, cases: list[dict] | None = None, emit: Emit | None = None, find_only: bool = False) -> dict:
     flow = EventCheckFlow(emit=emit, suppress_flow_events=True)
     flow.kickoff(inputs={"text": text, "cases": cases or [], "find_only": find_only})
@@ -285,7 +328,9 @@ def check_event(text: str, cases: list[dict] | None = None, emit: Emit | None = 
     for listed in s.listed:
         status = s.statuses.get(listed["name"]) or {
             "status": "no_notice_found", "quote": "", "url": "", "reportedWhen": ""}
-        services.append({**listed, **status})
+        merged = {**listed, **status}
+        merged["checks"] = field_checks(merged, s.own_pages.get(listed["name"], ""), s.observed_at or now())
+        services.append(merged)
     order = ["reported_closed", "reported_relocated", "reported_changed_hours", "unclear", "reported_operating", "no_notice_found"]
     services.sort(key=lambda x: order.index(x["status"]))
     return {

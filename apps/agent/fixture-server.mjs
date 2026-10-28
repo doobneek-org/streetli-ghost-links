@@ -214,7 +214,8 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
             // Only real provider names may go to live search; fictional fixtures stay local.
             const cases = lastFeed.mode === 'live' ? lastFeed.cases.slice(0, 2000).map(item => ({ id: item.id, name: item.organization.name, locality: item.organization.locality })) : [];
             const result = await python({ eventText: text, cases, findOnly: route === 'find_services' }, { onEvent });
-            write(result.kind ? { type: 'result', route, ...result } : { type: 'error', message: 'The service search failed. Check the server console and provider keys.' });
+            const { annotateRisk } = await import('./ask.mjs');
+            write(result.kind ? { type: 'result', route, ...result, services: annotateRisk(result.services, lastFeed) } : { type: 'error', message: 'The service search failed. Check the server console and provider keys.' });
           } else {
             write({ type: 'result', kind: 'unsupported', route, reason: routed.output?.reason || '' });
           }
