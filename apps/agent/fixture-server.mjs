@@ -158,6 +158,26 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
         const { buildReportingPlan } = await import('./reporting-routes.mjs');
         return send(200, await buildReportingPlan(selected));
       }
+      // Mirrors the Cloudflare Worker's /api/location so the inline Streetli panel behaves
+      // the same under `npm run dev` as it does on the deployed site. Public read, no token.
+      if (path === '/api/location' && request.method === 'GET') {
+        const params = new URL(request.url, `http://${host}`).searchParams;
+        const caseId = params.get('caseId') || '';
+        if (!/^[A-Za-z0-9_-]{1,200}$/.test(caseId) || params.getAll('caseId').length !== 1
+          || [...params.keys()].some(key => key !== 'caseId')) return send(400, {error: 'invalid_case_request'});
+        lastFeed = validateCaseFeed(await getCases());
+        const selected = lastFeed.cases.find(item => item.id === caseId);
+        if (!selected) return send(404, {error: 'case_not_found'});
+        const { buildLocationDetailUrl, projectLocationDetail } = await import('../../packages/contracts/location-detail.mjs');
+        const target = buildLocationDetailUrl(selected.location?.id);
+        if (!target) return send(404, {error: 'location_unavailable'});
+        try {
+          const response = await fetchImpl(target, { headers: { Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(30000) });
+          if (!response.ok) return send(503, {error: 'location_source_unavailable'});
+          const detail = projectLocationDetail(await response.json());
+          return detail ? send(200, { caseId, detail }) : send(502, {error: 'location_source_invalid_response'});
+        } catch { return send(503, {error: 'location_source_unavailable'}); }
+      }
       if (path === '/api/refresh' && request.method === 'POST') {
         if (Date.now() - lastRefreshStarted < 10000) return send(429, { error: 'refresh_throttled' });
         lastRefreshStarted = Date.now();

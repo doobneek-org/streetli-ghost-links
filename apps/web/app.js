@@ -422,16 +422,29 @@
         : 'This is a previously recorded flag. Confirm the provider, identifier, and current conditions before making a correction request.');
     const links = make('div', 'detail-links');
     const streetliUrl = safeStreetliUrl(item.location?.url);
+    // Opens the read-only Streetli record inline; falls back to the external link if
+    // location-detail.js did not load.
+    const inlineDetail = Boolean(item.location?.id && window.ghostLinksLocationDetail);
+    if (inlineDetail) {
+      const inline = make('button', 'primary-button', 'Open Streetli record');
+      inline.type = 'button';
+      inline.addEventListener('click', () => window.ghostLinksLocationDetail.open(item));
+      links.append(inline);
+    }
     if (streetliUrl) {
-      const original = make('a', 'primary-button', 'Open Streetli record ↗');
+      const original = make('a', inlineDetail ? 'secondary-button' : 'primary-button', inlineDetail ? 'Open Streetli editor ↗' : 'Open Streetli record ↗');
       original.href = streetliUrl; original.target = '_blank'; original.rel = 'noopener noreferrer'; links.append(original);
     }
-    const webSearch = make('a', streetliUrl ? 'secondary-button' : 'primary-button', 'Open web search ↗');
+    const webSearch = make('a', streetliUrl || inlineDetail ? 'secondary-button' : 'primary-button', 'Open web search ↗');
     if (feed?.mode === 'fixture') { webSearch.setAttribute('aria-disabled', 'true'); webSearch.textContent = 'Web search unavailable for fixtures'; }
     else {
       const searchUrl = new URL('https://www.google.com/search');
       const organization = item.organization.name === 'Historical provider (identity unavailable)' ? '' : ` "${item.organization.name}"`;
-      searchUrl.searchParams.set('q', `"${item.identifier.value}"${organization}`);
+      // Phone numbers are stored in E.164, which directories never print; the shared helper
+      // searches the printed variants instead. Falls back if search-query.js did not load.
+      searchUrl.searchParams.set('q', window.ghostLinksSearchQuery
+        ? window.ghostLinksSearchQuery.build(item)
+        : `"${item.identifier.value}"${organization}`);
       webSearch.href = searchUrl.href; webSearch.target = '_blank'; webSearch.rel = 'noopener noreferrer';
     }
     links.append(webSearch);
