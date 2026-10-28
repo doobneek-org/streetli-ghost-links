@@ -1,6 +1,10 @@
 # Research agent workspace
 
-This directory contains the local case server, private-feed consumer, and reporting-route lookup. It serves a working historical-case browser using fixtures or a configured private projection. You.com/CrewAI/Parasail/One agents and automatic external-reference verification remain integration work; loading retained records does not run a new Streetli scan.
+This directory contains the local case server, shared-feed consumer, reporting
+routes and Tim's CrewAI/Parasail research runtime using You.com Search/Contents.
+Viewing baseline records requires only Node. Research needs the Python setup
+and local sponsor keys below. The One review action is still pending. Loading
+the baseline does not run a new Streetli scan or make sponsor requests.
 
 `npm run dev` now uses the shared public data endpoint by default, without
 Streetli credentials. `STREETLI_CASES_MODE=fixture` selects offline examples.
@@ -28,6 +32,80 @@ The entry prompt may be “How can I make the social safety net better?” Route
 
 These roles are planned. Add setup details and exact SDK/API usage as integrations become functional. Verify provider capabilities and the event requirements before presenting an integration as complete.
 
+## Research flow (Python, working from the command line)
+
+`research/` holds a CrewAI flow that researches one case. The web app runs it
+through `research-route.mjs`, which spawns the venv's Python and streams NDJSON
+progress to the browser:
+
+- `POST /api/research?caseId=<id>`: runs the eligible live case's discovery job.
+  Trusted planner eligibility permits investigation of unconfirmed flags.
+  Fixtures return 409 `fixture_research_disabled`; ineligible cases return 409
+  `research_requires_approval`. Shared identifiers are researched once across branches.
+- `POST /api/discovery/run`: runs the next bounded batch (default three due jobs).
+  Receipts and source-bound findings persist under ignored `data/`.
+- `POST /api/research/test` with `{kind, value, organization, locality}`: the
+  labeled pipeline test behind the "Test the research pipeline" form.
+- One discovery batch at a time (429 `research_busy`), 180 s per job, and 503
+  `research_runtime_missing` if `apps/agent/.venv` is not installed.
+
+| Step | Runs on | What it does |
+| --- | --- | --- |
+| guard | code | Refuses fixtures (never sent to live search) and cases not `approved_for_research`. `--manual-test` runs on an identifier you supply and labels everything as a test. |
+| search | You.com Search | Searches the old identifier as pages write it (`718-680-6344`, `example.org/path`) plus the organization name; skips the retired website itself; keeps up to 5 pages. |
+| fetch | You.com Contents | Fetches those pages as markdown. Pages that fail stay `unknown`. |
+| match | code | Literal match of the old identifier. Pages without it become `not_present` with no model call; matches keep ~500 characters of context. |
+| verify | CrewAI agent → Parasail | One call per case judges every matching excerpt: `still_present`, `possible_match`, `not_present`, or `unknown`, with an exact quote. A `still_present` quote not found verbatim is downgraded to `possible_match`. |
+| draft | CrewAI agent → Parasail | A correction request per `still_present` page. Drafts only; nothing is sent. Manual-test drafts carry `testOnly: true`. |
+
+Output: contract-shaped `externalReferences` (`url`, `observedAt`, `state`,
+`quote`, `reportState`), plus `notes`, `drafts`, and `placeholderPrompts`.
+The discovery worker loads Ivan's `verify-reference` prompt and checks generated
+outputs against the server evidence gate. Request routing and filter planning
+still use explicitly marked placeholder templates pending domain prompt review.
+The separate manual-test flow is labeled as a test and never submits reports.
+
+Setup (Python 3.10–3.13), once:
+
+Windows PowerShell:
+
+```powershell
+python -m venv apps/agent/.venv
+apps/agent/.venv/Scripts/python.exe -m pip install -r apps/agent/requirements.txt
+```
+
+macOS/Linux:
+
+```sh
+cd apps/agent
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
+Needs `YDC_API_KEY`, `PARASAIL_API_KEY`, `PARASAIL_BASE_URL`, `PARASAIL_MODEL` in
+the root `.env`. `PARASAIL_REASONING_EFFORT=low` (default) cuts reasoning tokens
+sharply on `parasail-glm-53`.
+
+Both Node runners select `.venv/Scripts/python.exe` on Windows and
+`.venv/bin/python` on macOS/Linux. `GHOST_LINKS_PYTHON` can override the executable
+path server-side. Never commit the venv or `.env`. `/health` distinguishes the
+implemented research feature from whether this local Python executable exists;
+it does not certify provider authentication.
+
+Run from `apps/agent/`:
+
+```sh
+# A case from the running app's feed (start the app with `npm start` first)
+.venv/bin/python -m research.run --case-id <id>
+
+# A manual pipeline test on a public identifier (not a Streetli case)
+.venv/bin/python -m research.run --manual-test --kind phone \
+  --value "+17185550100" --org "Organization name" --locality "Brooklyn, NY"
+
+# Machine-readable events and result, one JSON object per line
+.venv/bin/python -m research.run --case-id <id> --jsonl
+```
+
 ## Evidence and output
 
 The v1 `externalReferences` fields are `url`, `observedAt`, `state`, `quote`, and `reportState`; see `packages/contracts/cases.mjs`. Coordinate additions with the contract owner. Useful evidence includes a public source URL, observation time, quoted passage containing the old identifier, provider/branch association, and the supported finding. Distinguish `still_present`, `unknown`, and a separately verified correction. A request failure, empty search, removed webpage, or submission receipt does not alone prove that a listing was fixed.
@@ -36,7 +114,11 @@ Preserve `internal.source`: `retained_ledger` is less conclusive than `confirmed
 
 ## Runtime and secrets
 
-The root app uses Node.js 20.19+ with no install step: run `npm run dev` and `npm test`. It loads the ignored server-only `.env`; with `STREETLI_CASES_URL` configured it uses that private source, otherwise fixtures. See [local dev setup](../../docs/local-dev.md). If agent dependencies or another runtime are added, document their exact setup here; current Node tests do not verify an unimplemented research agent.
+The root app uses Node.js 20.19+ with no Node install step: run `npm run dev` and
+`npm test`. It loads the ignored server-only `.env` and uses the shared endpoint
+unless a source override or fixture mode is configured. See
+[local dev setup](../../docs/local-dev.md). Node tests use scripted provider
+runtimes; Python compilation and URL admission tests run without paid calls.
 
 All API keys live server-side in a local `.env`; commit names and instructions only in `.env.example`. A future Streetli token may access only an approved read projection. Never request or use Firebase/admin credentials, raw logs, private notes, email histories, private source modules, or unreviewed production exports. Do not log authorization headers or pass secrets to prompts.
 

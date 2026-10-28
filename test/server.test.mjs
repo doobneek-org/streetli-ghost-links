@@ -16,7 +16,8 @@ test('fixture API runs offline, identifies itself, and rejects writes', async ()
     const cases = await fetch(`${base}/api/cases`);
     assert.equal(cases.status, 200); assert.equal(cases.headers.get('access-control-allow-origin'), null);
     assert.equal((await cases.json()).mode, 'fixture');
-    const health = await (await fetch(`${base}/health`)).json(); assert.equal(health.liveResearchImplemented, false);
+    const health = await (await fetch(`${base}/health`)).json(); assert.equal(health.liveResearchImplemented, true);
+    assert.equal(typeof health.researchRuntimeAvailable, 'boolean');
     assert.equal((await fetch(`${base}/api/cases`, {method: 'POST'})).status, 405);
     assert.equal((await fetch(`${base}/not-a-route`)).status, 404);
     assert.equal((await fetch(`${base}/api/cases`, {headers: {Origin: 'https://unrelated.example'}})).status, 403);

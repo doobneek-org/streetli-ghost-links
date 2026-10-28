@@ -21,18 +21,23 @@
       <h1 id="hero-title">How can I make the<br class="desktop-break"> social safety net better?</h1>
       <p class="hero-description">Start with the information that needs a second look. Explore phone numbers, emails, and websites previously flagged in Streetli.</p>
       <form id="search-form" class="search-form" role="search">
-        <label class="sr-only" for="search-input">Search historical identifier records</label>
+        <label class="sr-only" for="search-input">Ask Ghost Links or search the records</label>
         <span class="search-symbol" aria-hidden="true">⌕</span>
-        <input id="search-input" name="query" type="search" autocomplete="off" placeholder="Find broken websites, bad numbers, or an organization…">
-        <button class="primary-button search-submit" type="submit">Find records <span aria-hidden="true">↗</span></button>
+        <input id="search-input" name="query" type="search" autocomplete="off" placeholder="Food services that may be at risk · flood on the Upper West Side · food pantry in Harlem">
+        <button id="search-submit" class="primary-button search-submit" type="submit">Ask <span aria-hidden="true">↗</span></button>
       </form>
       <div class="example-prompts" aria-label="Suggested searches"><span>Try</span><button type="button" data-prompt="Find broken websites">Find broken websites</button><button type="button" data-prompt="Show bad phone numbers">Show bad phone numbers</button><button type="button" data-prompt="Find bad email addresses">Find bad email addresses</button></div>
-      <p class="search-note">Searches the loaded records. External web verification runs separately.</p>
+      <div class="example-prompts" aria-label="Suggested questions"><span>Ask</span><button type="button" data-ask="Find me food services that may be at risk">Food services that may be at risk</button><button type="button" data-ask="There was a flood on the Upper West Side">Flood on the Upper West Side</button><button type="button" data-ask="I need a food pantry in Harlem">Food pantry in Harlem</button></div>
+      <p class="search-note">Typing filters the loaded records instantly. Press Ask and Parasail, coordinated by CrewAI, decides whether to search the records, check an event, or find services with You.com.</p>
+      <div id="route-output" class="research-output route-output"></div>
     </section>
+
 
     <section class="workbench" id="results" aria-labelledby="results-title">
       <div class="workbench-heading"><div><div class="eyebrow">The review queue</div><h2 id="results-title">A place to start fixing things.</h2></div><button id="refresh-button" class="secondary-button" type="button"><span aria-hidden="true">↻</span> Refresh records</button></div>
       <div id="source-banner" class="source-banner" role="status" aria-live="polite"><span class="loading-pulse" aria-hidden="true"></span><span id="load-status">Loading historical records from the configured source…</span></div>
+      <div id="category-board" class="category-board" role="group" aria-label="Failed verifications by category"></div>
+      <div id="discovery-output" class="research-output discovery-output"></div>
       <div class="history-filters" role="group" aria-label="Filter historical record state"><button type="button" data-history-state="all" aria-pressed="true">All history <span data-state-count="all">—</span></button><button type="button" data-history-state="removed" aria-pressed="false">Removed <span data-state-count="removed">—</span></button><button type="button" data-history-state="flagged" aria-pressed="false">Flagged <span data-state-count="flagged">—</span></button></div>
       <div class="queue-toolbar"><div class="type-filters" role="group" aria-label="Filter identifier type"><button type="button" data-kind="all" aria-pressed="true">All records <span data-count="all">—</span></button><button type="button" data-kind="website" aria-pressed="false">Websites <span data-count="website">—</span></button><button type="button" data-kind="phone" aria-pressed="false">Phone numbers <span data-count="phone">—</span></button><button type="button" data-kind="email" aria-pressed="false">Emails <span data-count="email">—</span></button></div><p id="result-count" class="result-count" aria-live="polite">Waiting for records</p></div>
       <div class="queue-layout">
@@ -40,6 +45,20 @@
         <aside id="case-detail" class="case-detail" aria-label="Selected record details"><div class="detail-placeholder"><span class="detail-placeholder-mark" aria-hidden="true">↖</span><h3>Your next useful correction starts here.</h3><p>Select a record to review its history and see the next steps.</p></div></aside>
       </div>
       <p class="coverage-note" id="coverage-note">Coverage: retained records only. Past flags do not establish a current error.</p>
+    </section>
+
+    <section class="pipeline-test" aria-labelledby="pipeline-test-title">
+      <div class="eyebrow">Developer check</div>
+      <h2 id="pipeline-test-title">Test the research pipeline</h2>
+      <p class="pipeline-intro">Runs a real You.com search and a CrewAI/Parasail check on an identifier you enter. It is not a Streetli case, and any correction draft is marked test-only.</p>
+      <form id="pipeline-form" class="pipeline-form">
+        <label>Type <select id="pipeline-kind"><option value="phone">Phone</option><option value="website">Website</option><option value="email">Email</option></select></label>
+        <label>Identifier <input id="pipeline-value" type="text" autocomplete="off" required maxlength="300" placeholder="+17185550100 or https://old-site.org"></label>
+        <label>Organization <input id="pipeline-org" type="text" autocomplete="off" required maxlength="200" placeholder="Organization name"></label>
+        <label>Locality <input id="pipeline-locality" type="text" autocomplete="off" maxlength="160" placeholder="Brooklyn, NY"></label>
+        <button id="pipeline-submit" class="primary-button" type="submit">Run test</button>
+      </form>
+      <div id="pipeline-output" class="research-output"></div>
     </section>
   </main>
   <footer class="app-footer"><span class="footer-wordmark">ghost links</span><span>Read-only review · external verification not run.</span><a href="https://github.com/doobneek-org/streetli-ghost-links" target="_blank" rel="noopener noreferrer">Open source <span aria-hidden="true">↗</span></a></footer>

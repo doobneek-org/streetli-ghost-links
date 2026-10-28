@@ -42,8 +42,21 @@ test('shared identifiers across branches and organizations are broadly searched 
   assert.equal(result.jobs.length, 1);
   assert.deepEqual(result.jobs[0].caseIds, ['branch-a', 'branch-b', 'branch-c']);
   assert.equal(result.jobs[0].identities.length, 3);
-  assert.deepEqual(result.jobs[0].queries, ['"+12125550123" -site:gogetta.nyc']);
+  assert.equal(result.jobs[0].queries[0], '"+12125550123" -site:gogetta.nyc');
+  assert.match(result.jobs[0].queries[1], /"212-555-0123" OR "\(212\) 555-0123" OR "212 555 0123"/);
+  assert.equal(result.jobs[0].queries.length, 2);
+  assert.doesNotMatch(result.jobs[0].queries[1], /Pantry|Referral/);
   assert.deepEqual(result, plan(feed(b, c, a)), 'input row order must not change source binding or work ordering');
+});
+
+test('US phone discovery uses a formatted variant within two queries while preserving extension identity', () => {
+  const result=plan(feed(item('us-phone','phone','+17186806344')));
+  assert.match(result.jobs[0].queries[0], /"\+17186806344"/);
+  assert.match(result.jobs[0].queries[1], /"718-680-6344"/);
+  assert.match(result.jobs[0].queries[1], /"Example Community Pantry"/);
+  assert.equal(result.jobs[0].queries.length,2);
+  const extension=plan(feed(item('ext-phone','phone','+17186806344;ext=2')));
+  assert.ok(extension.jobs[0].queries.every(query=>query.includes(';ext=2')));
 });
 
 test('email case and website host casing deduplicate; path, query, scheme and phone extension remain meaningful', () => {

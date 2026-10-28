@@ -149,7 +149,36 @@ test('fixture mode permits local review without remote research or registrar loo
   const search = app.$('case-detail').querySelectorAll('a').find(anchor => anchor.getAttribute('aria-disabled') === 'true');
   assert.ok(search); assert.equal(search.href, undefined);
   app.$('case-detail').querySelectorAll('.report-toggle')[0].click(); await flush();
-  assert.equal(app.requests.length, 1);
+  // Loading local reviewer decisions is allowed; nothing reaches research or reporting.
+  assert.deepEqual(app.requests.map(request => request.url), ['/api/cases', '/api/review-actions']);
+  const research = app.$('case-detail').querySelectorAll('.research-button')[0];
+  assert.ok(research); assert.equal(research.disabled, true);
+});
+
+test('categories group failed verifications and a reviewer decision is saved locally', async () => {
+  const cases = [makeCase('scam-a', 'website'), makeCase('parked-b', 'website'), makeCase('phone-c', 'phone')];
+  cases[0].internal.reasonCode = 'website_scam_content'; cases[1].internal.reasonCode = 'website_domain_parked';
+  const app = await startApp(makeFeed(cases));
+  const compromise = app.by('data-category', 'compromise');
+  assert.match(compromise.textContent, /Possible compromise/); assert.match(compromise.textContent, /2/);
+  compromise.click();
+  assert.equal(app.$('record-list').children.length, 2);
+  assert.match(app.$('record-list').textContent, /Compromise risk/);
+  const resolve = app.$('case-detail').querySelectorAll('button').find(button => button.textContent === 'Mark resolved');
+  resolve.click(); await flush();
+  const saved = app.requests.find(request => request.url === '/api/review-actions' && request.method === 'POST');
+  assert.ok(saved);
+});
+
+test('generic saved scan leads have their own category and no compromise badge', async () => {
+  const item=makeCase('generic-scan','website','flagged');
+  item.internal.source='saved_scan'; item.internal.reasonCode='scan_unverified_content_review';
+  const app=await startApp(makeFeed([item]));
+  app.by('data-category','scan').click();
+  assert.equal(app.$('record-list').children.length,1);
+  assert.doesNotMatch(app.$('record-list').textContent,/Compromise risk/);
+  app.by('data-category','compromise').click();
+  assert.equal(app.$('record-list').children.length,0);
 });
 
 test('a live-source failure stays explicit and refresh failure preserves dated records', async () => {

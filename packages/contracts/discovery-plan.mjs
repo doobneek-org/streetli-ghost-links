@@ -19,7 +19,7 @@ const timestamp = value => {
   return Date.parse(value);
 };
 
-function normalizeIdentifier(identifier) {
+export function normalizeDiscoveryIdentifier(identifier) {
   const { kind, value } = identifier || {};
   if (!boundedText(value, 2048)) return null;
   const input = value.trim();
@@ -95,7 +95,7 @@ export function buildDiscoveryPlan(feed, { previousResults = [], now = Date.now(
   for (const item of feed.cases) {
     if (!item || !boundedText(item.id, 200) || !/^[a-zA-Z0-9_-]+$/.test(item.id) || ids.has(item.id)) { plan.skippedCases.invalidCase++; continue; }
     ids.add(item.id);
-    const identifier = normalizeIdentifier(item.identifier);
+    const identifier = normalizeDiscoveryIdentifier(item.identifier);
     if (!identifier) { plan.skippedCases.invalidIdentifier++; continue; }
     const identity = publicIdentity(item.organization);
     if (!identity) { plan.skippedCases.unknownIdentity++; continue; }
@@ -117,7 +117,7 @@ export function buildDiscoveryPlan(feed, { previousResults = [], now = Date.now(
     const caseIds = group.items.map(({ item }) => item.id);
     plan.eligibleCaseIds.push(...caseIds);
     const identities = [...group.identities.values()].sort((a, b) => compare(JSON.stringify(a), JSON.stringify(b)));
-    const binding = hash(JSON.stringify({ identifier: group.identifier, sources: group.items.map(({ item, identity }) => sourceBinding(item, identity)), excludedDomains }));
+    const binding = hash(JSON.stringify({ queryVersion: 2, identifier: group.identifier, sources: group.items.map(({ item, identity }) => sourceBinding(item, identity)), excludedDomains }));
     const prior = priorByBinding.get(binding);
     if (prior?.result.status === 'completed' && time - prior.time < DAY) { plan.skipped.freshCache++; continue; }
     if (prior?.result.status === 'error') {
@@ -133,7 +133,13 @@ export function buildDiscoveryPlan(feed, { previousResults = [], now = Date.now(
     const queries = [`${exact} ${exclusions}`];
     // Shared identifiers are searched broadly once; do not choose an arbitrary
     // organization/branch and hide legitimate uses by the others.
-    if (identities.length === 1) {
+    const nationalPhone = group.identifier.kind === 'phone' && group.identifier.value.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
+    if (nationalPhone) {
+      const [, area, exchange, subscriber] = nationalPhone;
+      const variants = `(${quote(`${area}-${exchange}-${subscriber}`)} OR ${quote(`(${area}) ${exchange}-${subscriber}`)} OR ${quote(`${area} ${exchange} ${subscriber}`)})`;
+      const identity = identities.length === 1 ? identities[0] : null;
+      queries.push(`${variants}${identity ? ` ${quote(identity.name)}${identity.locality ? ` ${quote(identity.locality)}` : ''}` : ''} ${exclusions}`);
+    } else if (identities.length === 1) {
       const identity = identities[0];
       queries.push(`${exact} ${quote(identity.name)}${identity.locality ? ` ${quote(identity.locality)}` : ''} ${exclusions}`);
     }

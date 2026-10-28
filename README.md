@@ -2,7 +2,7 @@
 
 A collaboration starter for finding outdated community-service contact information that remains online after it was removed or replaced in Streetli.
 
-The dev app loads Streetli's shared live phone, email, and website case feed by default, supports prompt/text search and state/type filters, and shows record details with reporting guidance. No Streetli token or Firebase credentials are needed. Set `STREETLI_CASES_MODE=fixture` for offline fictional examples. Website reporting guidance includes a passive current-registrar lookup. Autonomous external-reference discovery and sponsor integrations remain under development; this app does not submit reports or change Streetli.
+The dev app loads Streetli's shared live phone, email, and website case feed by default, supports prompt/text search and state/type filters, and shows record details with reporting guidance. No Streetli token or Firebase credentials are needed. Set `STREETLI_CASES_MODE=fixture` for offline fictional examples. Tim's research worker connects You.com Search/Contents and CrewAI/Parasail to bounded discovery jobs; it requires the separate Python setup and sponsor keys described in [agent setup](apps/agent/README.md). Website reporting guidance includes a passive registrar lookup. The app does not submit reports or change Streetli; the One action remains pending.
 
 ## Run locally
 
@@ -19,11 +19,12 @@ Open the dev app at <http://127.0.0.1:4317/>. The case API is <http://127.0.0.1:
 
 The server loads ignored local `.env` settings without overriding existing process variables. See [local data setup](docs/local-dev.md). A configured live source failure stays an error; the app never silently substitutes fictional results.
 
-With a live source configured, `npm run precompute` automatically prepares a
+`npm run precompute` automatically prepares a
 bounded, deduplicated external-discovery job plan under ignored `data/`.
 `npm run precompute -- --watch` refreshes the plan every five minutes. It makes
-no sponsor requests itself; Timothy's provider worker consumes the jobs and
-persists real results. See [automatic discovery](docs/external-discovery.md).
+no sponsor requests itself. With the Python runtime and keys configured, the
+dashboard's discovery button executes due jobs and persists real results.
+See [automatic discovery](docs/external-discovery.md).
 
 ## Project layout
 
