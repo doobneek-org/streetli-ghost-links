@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node apps/agent/fixture-server.mjs",
     "dev": "node --watch apps/agent/fixture-server.mjs",
+    "precompute": "node scripts/precompute-discovery.mjs",
     "test": "node --test"
   }
 }

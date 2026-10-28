@@ -62,7 +62,9 @@ export function validateCaseFeed(feed) {
     if (version === 1 || item.internal.correctedAt !== null) timestamp(item.internal.correctedAt, 'internal.correctedAt');
     if (version === 2 && item.internal.flaggedAt !== null) timestamp(item.internal.flaggedAt, 'internal.flaggedAt');
     if (item.internal.state === 'flagged' && item.internal.correctedAt !== null) fail('flagged contacts cannot assert a correction date');
-    one(item.internal.source, ['confirmed_correction', 'retained_ledger'], 'internal.source');
+    one(item.internal.source, ['confirmed_correction', 'retained_ledger', ...(version === 2 ? ['saved_scan'] : [])], 'internal.source');
+    if (item.internal.source === 'saved_scan'
+      && (item.internal.state !== 'flagged' || item.internal.correctedAt !== null)) fail('saved scans are unconfirmed flags, not corrections');
     one(item.internal.coverage, ['retained_records_only'], 'internal.coverage');
     if (item.internal.state === 'replaced') {
       object(item.replacement, ['value'], 'replacement');

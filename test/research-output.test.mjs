@@ -9,13 +9,23 @@ const context = evaluationInput(suite, suite.tests.find(item => item.id === 'sta
 const selection = () => ({intent: 'verify_external', kinds: ['website'], states: ['removed'], locality: 'Brooklyn', caseIds: [suite.case.id], question: null, explanation: 'Check the approved exact historical website case.'});
 const draft = () => ({caseId: suite.case.id, disposition: 'draft_ready', routeId: 'directory', subject: 'Please review a former website association', body: 'Please review the website association on the checked listing using the cited current provider evidence.', evidenceDocumentIds: ['listing', 'official'], needsHumanApproval: true, missingEvidence: []});
 
-test('request plans cannot invent cases, ignore type filters, or bypass owner approval', () => {
+test('request plans cannot invent cases, ignore type filters, or bypass server research scope', () => {
   const input = {cases: [suite.case], mode: 'live'};
   validateSelection(selection(), input);
   assert.throws(() => validateSelection({...selection(), caseIds: ['invented']}, input), /unknown_case/);
   assert.throws(() => validateSelection({...selection(), kinds: ['phone']}, input), /wrong_kind/);
   assert.throws(() => validateSelection(selection(), {...input, mode: 'fixture'}), /research_not_approved/);
   assert.throws(() => validateSelection(selection(), {mode: 'live', cases: [{...suite.case, reviewState: 'review_required'}]}), /research_not_approved/);
+});
+
+test('trusted automatic discovery scope permits researching unconfirmed flags without confirming them', () => {
+  const item = {...suite.case, reviewState: 'review_required'};
+  const input = {mode: 'live', cases: [item], researchCaseIds: [item.id]};
+  validateSelection(selection(), input);
+  assert.equal(item.reviewState, 'review_required');
+  assert.throws(() => validateSelection(selection(), {...input, researchCaseIds: ['invented']}), /invalid_research_scope/);
+  assert.throws(() => validateSelection(selection(), {...input, mode: 'fixture'}), /research_not_approved/);
+  assert.throws(() => validateVerification({...suite.referenceVerification, evidence: []}, context), /missing_stale_reference_evidence/);
 });
 
 test('verified stale claims require literal current association, identity and contradiction', () => {
