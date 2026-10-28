@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { validateCaseFeed } from '../../packages/contracts/cases.mjs';
 import { createResearchRunner, manualTestCase } from './research-route.mjs';
+import { createReviewStore, parseDecision } from './review-actions.mjs';
 
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 const contentTypes = { '/': 'text/html; charset=utf-8', '/app.js': 'text/javascript; charset=utf-8', '/styles.css': 'text/css; charset=utf-8' };
@@ -72,7 +73,7 @@ async function readJsonBody(request, limit = 4096) {
   try { return JSON.parse(body); } catch { throw safeError('invalid_request', 400); }
 }
 
-export async function createFixtureServer({ sourceUrl = '', token = '', fetchImpl = fetch, source = null, research = createResearchRunner() } = {}) {
+export async function createFixtureServer({ sourceUrl = '', token = '', fetchImpl = fetch, source = null, research = createResearchRunner(), reviews = createReviewStore() } = {}) {
   const fixture = validateCaseFeed(JSON.parse(await readFile(new URL('../../fixtures/cases.demo.json', import.meta.url), 'utf8')));
   const mode = source || sourceUrl ? 'live' : 'fixture';
   const getCases = source || (sourceUrl ? createLiveSource({ sourceUrl, token, fetchImpl }) : async () => fixture);
@@ -135,6 +136,32 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
         if (!research.available()) return send(503, { error: 'research_runtime_missing' });
         if (research.busy) return send(429, { error: 'research_busy' });
         return research.run(response, payload);
+      }
+      // Reviewer decisions. Local notes only: they never edit Streetli or mark a correction verified.
+      if (path === '/api/review-actions' && request.method === 'GET') {
+        const feedNow = lastFeed || validateCaseFeed(await getCases());
+        return send(200, { mode: feedNow.mode, actions: await reviews.list(feedNow.mode) });
+      }
+      if (path === '/api/review-actions' && request.method === 'POST') {
+        const decision = parseDecision(await readJsonBody(request));
+        if (!decision) return send(400, { error: 'invalid_review_decision' });
+        const feedNow = lastFeed || validateCaseFeed(await getCases());
+        if (!feedNow.cases.some(item => item.id === decision.caseId)) return send(404, { error: 'case_not_found' });
+        return send(200, { caseId: decision.caseId, action: await reviews.set(feedNow.mode, decision.caseId, decision.decision, decision.note) });
+      }
+      // Event check: which services near an event can still help, from public sources.
+      if (path === '/api/event-check' && request.method === 'POST') {
+        const body = await readJsonBody(request);
+        const text = typeof body?.text === 'string' ? body.text.trim() : '';
+        if (text.length < 8 || text.length > 300 || /[\u0000-\u001f]/.test(text)) return send(400, { error: 'invalid_event_text' });
+        if (!research.available()) return send(503, { error: 'research_runtime_missing' });
+        if (research.busy) return send(429, { error: 'research_busy' });
+        // Only real provider names may go to live search; fictional fixtures stay local.
+        const feedNow = lastFeed || validateCaseFeed(await getCases());
+        const cases = feedNow.mode === 'live'
+          ? feedNow.cases.slice(0, 2000).map(item => ({ id: item.id, name: item.organization.name, locality: item.organization.locality }))
+          : [];
+        return research.run(response, { eventText: text, cases });
       }
       if (request.method !== 'GET') { response.setHeader('Allow', path === '/api/refresh' ? 'POST' : 'GET'); return send(405, { error: 'read_only_case_api' }); }
       if (Object.hasOwn(assetNames, path)) {

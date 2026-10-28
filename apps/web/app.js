@@ -30,6 +30,92 @@
   let loadFailed = false;
   const reportingPlans = new Map();
 
+  // ---- Maintainer dashboard: failed verifications grouped by category ----
+  const categories = [
+    { id: 'compromise', title: 'Possible compromise', tone: 'found', detail: 'Scam content, suspected takeover, repurposed or parked domains',
+      codes: ['website_scam_content', 'website_suspected_compromise', 'website_repurposed', 'website_domain_parked'] },
+    { id: 'website', title: 'Broken websites', tone: 'maybe', detail: 'Pages that no longer load', codes: ['website_not_found'] },
+    { id: 'phone', title: 'Bad phone numbers', tone: 'maybe', detail: 'Numbers flagged disconnected', codes: ['phone_disconnected'] },
+    { id: 'email', title: 'Bad emails', tone: 'maybe', detail: 'Addresses or domains that fail delivery checks', codes: ['email_invalid', 'email_domain_no_mx'] },
+    { id: 'other', title: 'Other flags', tone: 'unknown', detail: 'Invalid, risky or manually flagged contacts', codes: [] }
+  ];
+  const compromiseRank = ['website_scam_content', 'website_suspected_compromise', 'website_repurposed', 'website_domain_parked'];
+  const categoryOf = item => {
+    if (item.internal.source === 'saved_scan' && item.identifier.kind === 'website') return 'compromise';
+    return categories.find(category => category.codes.includes(item.internal.reasonCode))?.id || 'other';
+  };
+  const decisionLabels = { resolved: 'Resolved by reviewer', not_an_issue: 'Not an issue', follow_up: 'Needs follow-up' };
+  let activeCategory = 'all';
+  let hideDecided = false;
+  let decisions = {};
+
+  function renderBoard() {
+    const board = $('category-board');
+    if (!board) return;
+    const open = list => list.filter(item => !decisions[item.id] || decisions[item.id].decision === 'follow_up').length;
+    const card = (id, title, detail, tone, list) => {
+      const button = make('button', `category-card tone-${tone}`);
+      button.type = 'button'; button.setAttribute('data-category', id);
+      button.setAttribute('aria-pressed', String(activeCategory === id));
+      button.append(make('span', 'category-title', title), make('span', 'category-count', number(open(list))),
+        make('span', 'category-detail', `${detail} · ${number(list.length - open(list))} decided`));
+      button.addEventListener('click', () => { activeCategory = activeCategory === id ? 'all' : id; visibleCount = 30; renderList(); });
+      return button;
+    };
+    const cards = [card('all', 'All open flags', 'Everything loaded', 'all', items)];
+    for (const category of categories) {
+      const list = items.filter(item => categoryOf(item) === category.id);
+      if (list.length || category.id === 'compromise') cards.push(card(category.id, category.title, category.detail, category.tone, list));
+    }
+    const toggle = make('button', 'secondary-button hide-decided', hideDecided ? 'Show decided records' : 'Hide decided records');
+    toggle.type = 'button'; toggle.setAttribute('aria-pressed', String(hideDecided));
+    toggle.addEventListener('click', () => { hideDecided = !hideDecided; visibleCount = 30; renderList(); });
+    board.replaceChildren(...cards, toggle);
+  }
+
+  async function loadDecisions() {
+    try {
+      const response = await fetch('/api/review-actions', { cache: 'no-store', headers: { Accept: 'application/json' } });
+      const payload = await response.json();
+      decisions = response.ok && payload?.mode === feed?.mode && payload.actions && typeof payload.actions === 'object' ? payload.actions : {};
+    } catch { decisions = {}; }
+    renderList();
+  }
+
+  function reviewSection(item) {
+    const section = make('section', 'review-decision');
+    const current = decisions[item.id];
+    section.append(make('div', 'eyebrow', 'Reviewer decision'));
+    section.append(make('p', 'research-note', current
+      ? `${decisionLabels[current.decision] || current.decision} · ${checkedTime(current.at)}${current.note ? ` · “${current.note}”` : ''}`
+      : 'Open. Record what you found; this does not edit Streetli or mark a correction verified.'));
+    const note = make('input', 'decision-note');
+    note.type = 'text'; note.maxLength = 300; note.placeholder = 'Optional note, e.g. “Directory fixed after edit request”';
+    note.setAttribute('aria-label', 'Decision note');
+    const buttons = make('div', 'decision-buttons');
+    const status = make('p', 'research-note');
+    const choose = async decision => {
+      buttons.querySelectorAll('button').forEach(button => { button.disabled = true; });
+      try {
+        const response = await fetch('/api/review-actions', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ caseId: item.id, decision, note: note.value || '' }) });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'save_failed');
+        if (payload.action) decisions[item.id] = payload.action; else delete decisions[item.id];
+        renderList();
+      } catch { status.textContent = 'The decision could not be saved. Try again.'; buttons.querySelectorAll('button').forEach(button => { button.disabled = false; }); }
+    };
+    const options = current ? [['open', 'Reopen']] : [['resolved', 'Mark resolved'], ['not_an_issue', 'Not an issue'], ['follow_up', 'Needs follow-up']];
+    for (const [decision, label] of options) {
+      const button = make('button', decision === 'resolved' ? 'primary-button' : 'secondary-button', label);
+      button.type = 'button';
+      button.addEventListener('click', () => choose(decision));
+      buttons.append(button);
+    }
+    if (!current) section.append(note);
+    section.append(buttons, status);
+    return section;
+  }
+
   const make = (tag, className, text) => {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -81,6 +167,8 @@
     const plan = queryPlan(query);
     return items.filter(item => {
       if (plan.kinds.size && !plan.kinds.has(item.identifier.kind)) return false;
+      if (activeCategory !== 'all' && categoryOf(item) !== activeCategory) return false;
+      if (hideDecided && decisions[item.id] && decisions[item.id].decision !== 'follow_up') return false;
       const haystack = [item.organization.name, item.organization.locality, item.identifier.value, item.identifier.kind, item.internal.reasonCode, readableReason(item.internal.reasonCode), stateLabels[item.internal.state]].join(' ').toLowerCase();
       return plan.terms.every(term => haystack.includes(term));
     });
@@ -104,10 +192,13 @@
   }
 
   function renderList() {
+    renderBoard();
     const queryMatches = filteredByQuery();
     const matchesState = (item, target) => target === 'all' || (target === 'removed' ? ['removed', 'replaced'].includes(item.internal.state) : item.internal.state === 'flagged');
     const stateMatches = queryMatches.filter(item => matchesState(item, activeState));
     const matches = activeKind === 'all' ? stateMatches : stateMatches.filter(item => item.identifier.kind === activeKind);
+    // In the compromise view, the most severe signals come first.
+    if (activeCategory === 'compromise') matches.sort((a, b) => (compromiseRank.indexOf(a.internal.reasonCode) + 1 || 9) - (compromiseRank.indexOf(b.internal.reasonCode) + 1 || 9));
     document.querySelectorAll('[data-history-state]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.historyState === activeState)));
     document.querySelectorAll('[data-state-count]').forEach(span => { span.textContent = number(queryMatches.filter(item => matchesState(item, span.dataset.stateCount)).length); });
     document.querySelectorAll('[data-kind]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.kind === activeKind)));
@@ -134,6 +225,10 @@
       if (historicalDate) { const recorded = make('time', 'record-date', date(historicalDate)); recorded.dateTime = historicalDate; metadata.append(recorded); }
       bottom.append(make('span', 'record-reason', readableReason(item.internal.reasonCode)), metadata);
       button.append(top, make('span', 'record-value', item.identifier.value), bottom);
+      const flags = make('span', 'record-flags');
+      if (categoryOf(item) === 'compromise') flags.append(make('span', 'record-flag risk', 'Compromise risk'));
+      if (decisions[item.id]) flags.append(make('span', `record-flag decided-${decisions[item.id].decision}`, decisionLabels[decisions[item.id].decision] || 'Decided'));
+      if (flags.childNodes.length) button.append(flags);
       if (historicalDate) button.setAttribute('aria-label', `${item.organization.name}, ${labels[item.identifier.kind]}, ${item.identifier.value}, ${stateLabels[item.internal.state]}, ${date(historicalDate)}`);
       button.addEventListener('click', () => {
         selectedId = item.id;
@@ -224,7 +319,7 @@
         loadReportingPlan(item, stepsBox);
       }
     });
-    elements.detail.append(kicker, make('h3', 'detail-title', item.organization.name), make('p', 'detail-locality', item.organization.locality), identifier, facts, context, links, make('p', 'detail-footnote', feed?.mode === 'fixture' ? 'Fictional example · do not report this case to a real platform.' : 'Opening web search sends this identifier and organization name to Google.'), researchSection(item), toggle, stepsBox);
+    elements.detail.append(kicker, make('h3', 'detail-title', item.organization.name), make('p', 'detail-locality', item.organization.locality), identifier, facts, context, links, make('p', 'detail-footnote', feed?.mode === 'fixture' ? 'Fictional example · do not report this case to a real platform.' : 'Opening web search sends this identifier and organization name to Google.'), reviewSection(item), researchSection(item), toggle, stepsBox);
   }
 
   // ---- Web research: You.com search + CrewAI/Parasail verification, streamed from the server ----
@@ -237,7 +332,8 @@
     research_requires_approval: 'Research runs only on cases approved for research.',
     research_runtime_missing: 'The Python research runtime is not installed. See apps/agent/README.md.',
     research_busy: 'Another research run is in progress. Try again when it finishes.',
-    invalid_manual_test: 'Enter a type, an identifier, and an organization name.'
+    invalid_manual_test: 'Enter a type, an identifier, and an organization name.',
+    invalid_event_text: 'Describe the event and the place in a sentence (8–300 characters).'
   };
 
   function researchSection(item) {
@@ -263,7 +359,7 @@
     return row;
   }
 
-  async function runResearch(url, body, output, button) {
+  async function runResearch(url, body, output, button, render = renderResearchResult) {
     const label = button.textContent;
     button.disabled = true; button.textContent = 'Researching…';
     const live = make('p', 'research-live', 'Starting research…');
@@ -298,8 +394,10 @@
     } catch (error) { failure = error.message || 'Research failed.'; }
     finally { button.disabled = false; button.textContent = label; }
     if (result) {
-      live.textContent = result.stopped ? 'Research stopped before searching.' : 'Research finished. Review the evidence before any correction request.';
-      output.append(renderResearchResult(result));
+      live.textContent = result.kind === 'event'
+        ? (result.stopped ? 'Event check stopped.' : 'Event check finished. Call ahead before sending anyone.')
+        : result.stopped ? 'Research stopped before searching.' : 'Research finished. Review the evidence before any correction request.';
+      output.append(render(result));
     }
     if (failure) output.append(make('p', 'research-error', failure));
     if (!result && !failure) output.append(make('p', 'research-error', 'Research ended without a result.'));
@@ -337,6 +435,75 @@
     box.append(make('p', 'report-status', 'No report or message has been sent by this app. A reviewer decides what to submit.'));
     return box;
   }
+
+  // ---- Event check: which nearby services can still help after an event ----
+  const eventStatus = {
+    reported_closed: ['Reported closed', 'found'], reported_relocated: ['Reported moved', 'found'],
+    reported_changed_hours: ['Reported changed hours', 'maybe'], unclear: ['Notice found · unclear', 'maybe'],
+    reported_operating: ['Reported open', 'clear'], no_notice_found: ['No closure notice found', 'unknown']
+  };
+  const listedDate = value => { const parsed = value ? new Date(value) : null; return parsed && Number.isFinite(parsed.getTime()) ? parsed.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : ''; };
+  const hostOf = value => { try { return new URL(value).hostname.replace(/^www\./, ''); } catch { return 'source'; } };
+
+  function serviceCard(service) {
+    const [title, tone] = eventStatus[service.status] || ['Unknown', 'unknown'];
+    const card = make('div', `evidence evidence-${tone}`);
+    const head = make('div', 'evidence-head');
+    head.append(make('span', `evidence-state ${tone}`, title), make('strong', 'service-name', service.name));
+    card.append(head);
+    if (service.address) card.append(make('p', 'service-address', service.address));
+    if (service.quote) {
+      card.append(make('blockquote', 'evidence-quote', `“${service.quote}”`));
+      const source = externalAnchor(`${hostOf(service.url)} ↗`, service.url, 'evidence-link');
+      if (source) card.append(source);
+    }
+    const listed = make('p', 'evidence-meta');
+    const listing = externalAnchor(`${hostOf(service.listedOn)}${service.listedOnAge ? ` (${listedDate(service.listedOnAge)})` : ''} ↗`, service.listedOn, 'evidence-link');
+    listed.append(document.createTextNode('Listed on '), listing || make('span', '', hostOf(service.listedOn)));
+    if (service.website) { const site = externalAnchor('website ↗', service.website, 'evidence-link'); if (site) listed.append(document.createTextNode(' · '), site); }
+    card.append(listed);
+    return card;
+  }
+
+  function renderEventResult(result) {
+    const box = make('div', 'research-result');
+    if (result.stopped) { box.append(make('p', 'research-error', result.stopped)); return box; }
+    if (result.event) box.append(make('p', 'event-title', `${result.event.event_type} · ${result.event.area}`));
+    const services = Array.isArray(result.services) ? result.services.slice(0, 20) : [];
+    const disrupted = services.filter(s => ['reported_closed', 'reported_relocated', 'reported_changed_hours'].includes(s.status));
+    const available = services.filter(s => !disrupted.includes(s));
+    box.append(make('p', 'research-summary', `${services.length} services found nearby · ${disrupted.length} report a disruption · checked ${checkedTime(result.observedAt)}`));
+    if (disrupted.length) {
+      box.append(make('div', 'eyebrow', 'Reported disruption'));
+      disrupted.forEach(s => box.append(serviceCard(s)));
+    }
+    if (available.length) {
+      box.append(make('div', 'eyebrow', 'Likely still able to help'));
+      box.append(make('p', 'research-note', 'No closure notice was found online for these. That is not proof they are open: call ahead.'));
+      available.forEach(s => box.append(serviceCard(s)));
+    }
+    if (Array.isArray(result.news) && result.news.length) {
+      const news = make('details', 'event-news');
+      news.append(make('summary', '', `Recent reports (${result.news.length})`));
+      const list = make('ul', 'route-requirements');
+      result.news.slice(0, 6).forEach(item => {
+        const row = make('li');
+        row.append(externalAnchor(`${item.title} ↗`, item.url, 'evidence-link') || make('span', '', item.title));
+        if (item.pageAge) row.append(document.createTextNode(` · ${listedDate(item.pageAge)}`));
+        list.append(row);
+      });
+      news.append(list); box.append(news);
+    }
+    if (Array.isArray(result.areaRecords) && result.areaRecords.length) box.append(make('p', 'research-note', `${result.areaRecords.length} Streetli records are in this area and were included in the search.`));
+    box.append(make('p', 'report-status', 'Statuses are what public sources report. Nothing was edited or sent.'));
+    return box;
+  }
+
+  const eventCheck = { form: $('event-form'), input: $('event-input'), submit: $('event-submit'), output: $('event-output') };
+  if (eventCheck.form) eventCheck.form.addEventListener('submit', event => {
+    event.preventDefault();
+    runResearch('/api/event-check', { text: eventCheck.input.value }, eventCheck.output, eventCheck.submit, renderEventResult);
+  });
 
   const pipeline = { form: $('pipeline-form'), kind: $('pipeline-kind'), value: $('pipeline-value'), org: $('pipeline-org'), locality: $('pipeline-locality'), submit: $('pipeline-submit'), output: $('pipeline-output') };
   if (pipeline.form) pipeline.form.addEventListener('submit', event => {
@@ -424,6 +591,7 @@
       if (!stateChosen && payload.schemaVersion === 2 && payload.mode === 'live' && items.some(item => ['removed', 'replaced'].includes(item.internal.state))) activeState = 'removed';
       reportingPlans.clear();
       renderSource();
+      loadDecisions();
     } catch (error) {
       loadFailed = true;
       const message = error.name === 'AbortError' ? 'The source took too long to respond. Check the local adapter and refresh.' : 'The record source is unavailable. Check the local Streetli adapter and refresh.';

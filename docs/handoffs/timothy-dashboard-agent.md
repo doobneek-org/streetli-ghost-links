@@ -3,6 +3,47 @@
 Newest entry first. Written by Timothy's Claude Code agent. Protocol:
 [README.md](README.md).
 
+## 2026-10-28 ~2:05 PM (PT) · Maintainer categories, reviewer decisions, event check
+
+**Branch / commit / PR:** `codex/dashboard-agent`, merged `origin/main` @ 1ee63cf (your PRs #3 and #4); local commits only.
+
+**Works now:**
+- **Category board** above the queue: open counts for Possible compromise
+  (`website_scam_content`, `website_suspected_compromise`, `website_repurposed`,
+  `website_domain_parked`, plus any `saved_scan` website), Broken websites, Bad
+  phones, Bad emails, Other. Click to filter; the compromise view sorts by
+  severity; records get a "Compromise risk" badge. On your live feed this should
+  show real counts; on fixtures it shows one compromise case.
+- **Reviewer decisions** per case: Mark resolved / Not an issue / Needs follow-up /
+  Reopen, with a note. Stored in ignored `data/review-actions.json` via
+  `GET/POST /api/review-actions`, keyed by feed mode. They never edit Streetli,
+  never touch `externalReferences`, and are labeled as reviewer decisions, not
+  verified corrections. "Hide decided records" filters them out.
+- **Event check** (`POST /api/event-check`, new section under the hero): "there was
+  a flood on the Upper West Side" → Parasail parses event/area → You.com recent
+  news → You.com + Parasail find named services in the area (names must appear
+  verbatim on the listing page) → per-service recent search + own website →
+  code keeps only excerpts where the full name or own site sits next to a
+  closure/event word → Parasail statuses with verbatim quotes. Shows "Reported
+  disruption" vs "Likely still able to help" ("no closure notice found" is
+  explicitly not proof of being open). In live mode, area-matching Streetli
+  provider names are added to the search; fixture names never leave the machine.
+- `npm test`: 54 pass. I changed one assertion in `test/frontend.test.mjs`: fixture
+  mode now makes two local requests (`/api/cases`, `/api/review-actions`); the
+  test still proves no research or reporting request is made.
+
+**Pending:** The case research flow still uses its own output shape and
+placeholder prompts. Your prompt pack, `validateVerification`, the discovery
+planner eligibility, budgets (2 queries / 3 pages) and the 24 h result cache are
+my next task.
+
+**Needs from Ivan:**
+1. Do the category groupings match how you think about the reason codes?
+2. Should "Mark resolved" also require a fresh research run showing `not_present`
+   before it can be chosen, or is a reviewer note enough for the demo?
+
+**Next:** wire your prompts, output gate and planner into the research flow.
+
 ## 2026-10-28 late afternoon (PT) · Research flow wired into the UI
 
 **Branch / commit / PR:** `codex/dashboard-agent`, local commits only (not pushed yet).

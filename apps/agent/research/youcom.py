@@ -1,4 +1,7 @@
 """You.com Search and Contents clients (header X-API-Key, per the event guide)."""
+import re
+from urllib.parse import urlparse
+
 import httpx
 
 from .config import require
@@ -42,11 +45,33 @@ def search(query: str, count: int, freshness: str | None = None) -> list[dict]:
     return [r for r in results if r["url"].startswith(("http://", "https://"))]
 
 
+def _fetchable(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    return parsed.scheme in ("http", "https") and bool(parsed.hostname) and not parsed.username \
+        and not re.search(r"\s", url) and len(url) <= 2048
+
+
 def contents(urls: list[str]) -> dict[str, str]:
-    """Clean markdown per URL. URLs missing from the result could not be fetched."""
+    """Clean markdown per URL. URLs missing from the result could not be fetched.
+    One bad URL can fail a whole batch (HTTP 422), so a failed batch is retried per URL."""
+    urls = [u for u in dict.fromkeys(urls) if _fetchable(u)]
     if not urls:
         return {}
-    data = _post(CONTENTS_URL, {"urls": urls, "formats": ["markdown"]}, timeout=45)
+    try:
+        data = _post(CONTENTS_URL, {"urls": urls, "formats": ["markdown"]}, timeout=45)
+    except YouComError:
+        if len(urls) == 1:
+            raise
+        pages = {}
+        for url in urls:
+            try:
+                pages.update(contents([url]))
+            except YouComError:
+                pass
+        return pages
     pages = {}
     for item in data if isinstance(data, list) else []:
         if isinstance(item, dict) and isinstance(item.get("markdown"), str):
