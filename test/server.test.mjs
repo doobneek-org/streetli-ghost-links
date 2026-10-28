@@ -58,10 +58,14 @@ test('live source failures remain explicit and never fall back to fictional case
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
 
-test('source must be a private credential-free configured URL with a token', () => {
+test('source requires a credential-free configured URL, token and bounded request timeout', () => {
   assert.throws(() => createLiveSource({sourceUrl: 'http://external.example/api/cases', token: 'fake-test-token-with-enough-length'}), /config/);
   assert.throws(() => createLiveSource({sourceUrl: 'https://user:pass@external.example/api/cases', token: 'fake-test-token-with-enough-length'}), /config/);
   assert.throws(() => createLiveSource({sourceUrl: 'http://127.0.0.1:4318/api/cases', token: ''}), /config/);
+  for (const timeoutMs of [0, -1, 300001, NaN, '300000']) {
+    assert.throws(() => createLiveSource({sourceUrl: 'http://127.0.0.1:4318/api/cases', token: 'fake-test-token-with-enough-length', timeoutMs}), /config/);
+  }
+  assert.doesNotThrow(() => createLiveSource({sourceUrl: 'http://127.0.0.1:4318/api/cases', token: 'fake-test-token-with-enough-length', timeoutMs: 300000}));
 });
 
 test('reporting endpoint uses an existing case, rejects arbitrary targets, and never reports fixtures', async () => {

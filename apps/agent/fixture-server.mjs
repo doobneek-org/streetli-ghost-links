@@ -21,10 +21,11 @@ export async function loadLocalEnv(path = resolve('.env'), environment = process
   }
 }
 
-export function createLiveSource({ sourceUrl, token, fetchImpl = fetch, ttlMs = 300000 } = {}) {
+export function createLiveSource({ sourceUrl, token, fetchImpl = fetch, ttlMs = 300000, timeoutMs = 120000 } = {}) {
   let url;
   try { url = new URL(sourceUrl); } catch { throw safeError('invalid_case_source_config', 500); }
-  if (!token || token.length < 24 || url.username || url.password || url.search || url.hash
+  if (!token || token.length < 24 || !Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 300000
+    || url.username || url.password || url.search || url.hash
     || !['http:', 'https:'].includes(url.protocol)
     || (url.protocol === 'http:' && !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))) throw safeError('invalid_case_source_config', 500);
   let cached = null;
@@ -37,7 +38,7 @@ export function createLiveSource({ sourceUrl, token, fetchImpl = fetch, ttlMs = 
       const endpoint = new URL(url);
       if (refresh) endpoint.searchParams.set('refresh', '1');
       let response;
-      try { response = await fetchImpl(endpoint, { headers: { Authorization: `Bearer ${token}` }, redirect: 'error', signal: AbortSignal.timeout(120000) }); }
+      try { response = await fetchImpl(endpoint, { headers: { Authorization: `Bearer ${token}` }, redirect: 'error', signal: AbortSignal.timeout(timeoutMs) }); }
       catch { throw safeError('case_source_unavailable'); }
       if (!response.ok) throw safeError(response.status === 401 ? 'case_source_unauthorized' : 'case_source_unavailable');
       if (Number(response.headers?.get('content-length')) > MAX_RESPONSE_BYTES) throw safeError('case_source_too_large');
