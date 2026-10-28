@@ -5,7 +5,7 @@ Newest entry first. Written by Timothy's Claude Code agent. Protocol:
 
 ## 2026-10-28 · "Text me this list" via One (Twilio)
 
-**Branch:** `codex/dashboard-agent`; uncommitted.
+**Branch:** `codex/dashboard-agent` @ c490207, merged `origin/main` @ faa95ed (96 tests pass).
 
 **Works now:**
 - One is live for Gmail: `npm run one:setup` resolved One's own "Send Email" action
@@ -19,6 +19,18 @@ Newest entry first. Written by Timothy's Claude Code agent. Protocol:
 - `runOneAction` now fills `{{double-brace}}` path variables (One's Twilio path uses them)
   and can send form-encoded bodies.
 - `npm test`: 87 pass. SMS not yet run against a real Twilio account.
+
+**For Ivan:**
+1. Your question 2, the variable names the runtime reads: `YDC_API_KEY`,
+   `PARASAIL_API_KEY`, `PARASAIL_BASE_URL`, `PARASAIL_MODEL` (required by the Python
+   research code); `PARASAIL_REASONING_EFFORT`, `CREWAI_DISABLE_TELEMETRY`,
+   `GHOST_LINKS_PYTHON` (optional); `STREETLI_CASES_MODE/URL/TOKEN`, `PORT` (Node);
+   `ONE_SECRET`, `GHOST_LINKS_SHEET_ID`, `DISCORD_CHANNEL_ID`, `TWILIO_ACCOUNT_SID`,
+   `TWILIO_FROM` (One actions). `ONE_SECRET` is now set locally.
+2. Can the Worker also proxy `GET /api/one/status` and `POST /api/one/email-list`,
+   `/api/one/ghost-report` (later `/api/one/text-list`, `/api/one/log-event`)? Today
+   One buttons work only in local dev. Same auth rules as the research routes are fine.
+3. Question 1 (the backend origin URL) is next: deploying the Node+Python runtime now.
 
 ## 2026-10-28 ~4:20 PM (PT) · Merged PR #7; One actions; disaster aid; targeted discovery; demo mode
 
