@@ -2,6 +2,65 @@
 
 Newest entry first. Protocol: [README.md](README.md).
 
+## 2026-10-28 22:40 (EDT) · Research backend integration is yours; here is the contract
+
+Correcting my previous entry: its **Next** line put the hosted research backend
+on me. Reassigning it to Timothy's agent, because the Python/CrewAI runtime
+under `apps/agent/` is Timothy's per `AGENTS.md:33` and the Worker side is
+already finished and deployed. Ivan keeps only the Secret Manager half.
+
+**What is already done (do not rebuild):** the Worker at `you.doobneek.org`
+serves the dashboard and the live feed, and it already contains a complete,
+tested proxy to a research backend. Nothing in `apps/cloudflare/` needs to
+change to turn research on — it is configuration-gated, not unimplemented.
+
+**Your task:** deploy the Node+Python runtime to an HTTPS origin (Cloud Run
+needs the fewest changes to the subprocess setup; Firebase Python functions
+also work) and make it answer the routes below. Then tell Ivan the origin URL
+and he will set the Worker configuration.
+
+**The contract the Worker already enforces** (`apps/cloudflare/worker.mjs`):
+
+- Proxied paths, forwarded as `<backend base path>` + the request path, so a
+  base of `https://host/base/` maps `/api/ask` to `https://host/base/api/ask`:
+  `/api/review-actions` (GET, POST), `/api/discovery/findings` (GET),
+  `/api/discovery/run` (POST), `/api/research` (POST, requires `?caseId=`),
+  `/api/research/test` (POST), `/api/ask` (POST), `/api/route` (POST),
+  `/api/event-check` (POST).
+- Auth: GET is open. POST requires the caller to send
+  `Authorization: Bearer <MAINTAINER_TOKEN>`; the Worker checks it, strips all
+  caller credentials, and sends your backend `Bearer <RESEARCH_BACKEND_TOKEN>`
+  instead. Your backend only ever sees the backend token.
+- Your backend must return `application/json` or `application/x-ndjson`;
+  any other content type becomes a `502` at the edge. Streaming NDJSON works.
+- Limits: request bodies are capped at 4096 bytes and the proxy times out at
+  180s. Backend `400/404/409/413/429` pass through; anything else becomes a
+  `503`, with `429` reported to the browser as `research_busy`.
+- Cross-origin POSTs are rejected with `403` before any proxying.
+
+**Configuration (Ivan's half, not in Git):** `RESEARCH_BACKEND_URL` as a plain
+var in `wrangler.jsonc`; `RESEARCH_BACKEND_TOKEN` and `MAINTAINER_TOKEN` via
+`wrangler secret put`. The URL must be `https:` with no userinfo, query or
+fragment, and both tokens must match `^[A-Za-z0-9_-]{32,256}$` or the Worker
+returns `research_backend_configuration_invalid` on every route.
+
+**How you know it worked:** `/health` currently reports
+`researchBackendConfigured: false`. Once the backend is configured it reports
+`true`, and the dashboard's discovery and reviewer controls stop rendering the
+"not connected yet" state on their own — the frontend already reads
+`researchBackendAvailable` from `/api/review-actions` and
+`/api/discovery/findings`.
+
+**Needs from Timothy (carried over, still open):** the provider env-var names
+the runtime expects, by name only — the values go into Secret Manager, never
+into Git or this log.
+
+**Not yours, do not wait on it:** You.com and Parasail secrets do not exist in
+either Google project yet. Ivan adds them.
+
+**Next (Ivan):** add the provider secrets once the names are known, then set
+the three Worker values and verify `/health` flips to configured.
+
 ## 2026-10-28 22:05 (EDT) · Cloudflare edge live; fixed the Workers redirect bug
 
 **Branch / commit / PR:** `codex/streetli-adapter` · Worker version
