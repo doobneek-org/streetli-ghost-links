@@ -739,6 +739,20 @@
     const services = Array.isArray(result.services) ? result.services.slice(0, 20) : [];
     const disrupted = services.filter(s => ['reported_closed', 'reported_relocated', 'reported_changed_hours'].includes(s.status));
     const available = services.filter(s => !disrupted.includes(s));
+    if (Array.isArray(result.aid) && result.aid.length) {
+      box.append(make('div', 'eyebrow', t('Official disaster help', 'Official protectors')));
+      for (const org of result.aid.slice(0, 3)) {
+        const card = make('div', 'evidence evidence-clear aid-card');
+        const head = make('div', 'evidence-head');
+        head.append(make('span', 'evidence-state clear', 'Official help'), make('strong', 'service-name', org.name));
+        card.append(head);
+        if (org.howToGetHelp) card.append(make('blockquote', 'evidence-quote', `“${org.howToGetHelp}”`));
+        if (org.phone) card.append(make('p', 'service-address', `Call ${org.phone}`));
+        const link = externalAnchor(`${hostOf(org.url)} ↗`, org.url, 'evidence-link');
+        if (link) card.append(link);
+        box.append(card);
+      }
+    }
     if (result.event?.service_types?.length) box.append(make('p', 'research-note', `${result.kind === 'event' ? t(`What someone affected by a ${result.event.event_type} may need`, `What a soul touched by this ${result.event.event_type} may need`) : 'Looking for'}: ${result.event.service_types.join(' · ')}. Closest first.`));
     if (result.searchedArea) box.append(make('p', 'research-note', `Few services are listed in ${result.event?.area || 'that area'} itself, so this also includes ${result.searchedArea}.`));
     box.append(make('p', 'research-summary', `${services.length} services found nearby · ${disrupted.length} report a disruption · checked ${checkedTime(result.observedAt)}`));
