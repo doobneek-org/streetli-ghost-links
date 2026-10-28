@@ -1,0 +1,7 @@
+# Python agent service (CrewAI + You.com + Parasail). Python 3.10–3.13.
+crewai
+crewai-tools
+fastapi
+uvicorn
+httpx
+python-dotenv

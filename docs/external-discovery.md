@@ -83,11 +83,14 @@ and [Contents](https://you.com/docs/api-reference/contents).
 
 ## Current delivery boundary
 
-The baseline adapter, planning helper and evidence gates are implemented. The
-current app server still reports `liveResearchImplemented: false`: it does not
-execute sponsor searches or run a background discovery worker. Runtime storage,
-provider keys, budget enforcement and genuine tool progress remain Timothy's
-integration work. The private localhost bridge is not a shared hosted endpoint.
+The baseline adapter, planning helper, evidence gates and Tim's discovery runtime
+are implemented. The dashboard can execute due jobs through You.com and
+CrewAI/Parasail after the Python environment and keys are configured. Receipts
+and findings persist under ignored `data/`, with source bindings and timestamps.
+Tests use offline scripted providers; no live sponsor call was made on Ivan's
+machine during integration. One is pending. The shared public baseline endpoint is now the app's default,
+refreshed hourly by Streetli. The private localhost bridge remains an optional
+owner-only source; a teammate does not need it or Firebase credentials.
 
 AWS is optional in the event guide. No database or public hosting vendor is
 prescribed for The Open Haunt. Reuse the existing backend and host the interface

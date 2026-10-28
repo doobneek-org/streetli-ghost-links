@@ -4,8 +4,18 @@ Use Node.js 20.19+ in this standalone repository. Run `npm test`, then `npm run 
 Open http://127.0.0.1:4317/. The server binds loopback only. Frontend files are
 served directly; refresh the browser after editing them.
 
-Without `STREETLI_CASES_URL`, the app loads labeled fictional fixtures. Those
-records cannot trigger external search or registrar reporting lookups.
+The app uses the shared public live source by default, with no Streetli token or
+Firebase credentials. Pull and merge `origin/main`, run `npm run dev`, and open
+the local URL. An older blank `STREETLI_CASES_URL` also selects this shared source.
+An explicit custom URL, including the owner's old localhost URL, overrides it.
+
+The source is
+https://us-central1-streetli.cloudfunctions.net/streetliGhostLinksCases.
+It serves a precomputed public projection, refreshed hourly from retained live
+findings. Reads and the local refresh button do not launch scans or paid research.
+
+Set `STREETLI_CASES_MODE=fixture` for labeled offline examples. Fixture records
+cannot trigger external search or registrar reporting lookups.
 
 ## Private live case source
 
@@ -28,10 +38,9 @@ Refresh records requests a fresh read of the retained ledger and current catalog
 identity. This does not call the contacts, fetch provider websites, run AI scans,
 publish data, or change the catalogue.
 
-A teammate on another machine can use fixtures immediately. Their own localhost
-is not the owner's machine: live access needs a separately provisioned approved
-private endpoint. Do not expose the local bridge on a public tunnel or share ADC
-just to make development work.
+A teammate uses the shared endpoint above. Their localhost is not the owner's
+machine. Keep the private bridge as an optional owner-only source and do not
+share ADC or expose it through a tunnel.
 
 ## What the data means
 

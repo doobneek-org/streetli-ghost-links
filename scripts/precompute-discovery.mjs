@@ -3,12 +3,14 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { loadLocalEnv, createLiveSource } from '../apps/agent/fixture-server.mjs';
 import { buildDiscoveryPlan } from '../packages/contracts/discovery-plan.mjs';
+import { PUBLIC_CASES_URL } from '../packages/contracts/case-source.mjs';
 
 const args = process.argv.slice(2);
 if (args.some(value => value !== '--watch') || args.length > 1) throw new Error('Use npm run precompute [-- --watch].');
 await loadLocalEnv();
-if (!process.env.STREETLI_CASES_URL) throw new Error('Configure the live STREETLI_CASES_URL and server-only token first.');
-const getCases = createLiveSource({ sourceUrl: process.env.STREETLI_CASES_URL, token: process.env.STREETLI_CASES_TOKEN, timeoutMs: 300000 });
+if (process.env.STREETLI_CASES_MODE === 'fixture') throw new Error('Discovery precomputation requires live mode.');
+const getCases = createLiveSource({ sourceUrl: process.env.STREETLI_CASES_URL?.trim() || PUBLIC_CASES_URL,
+  token: process.env.STREETLI_CASES_TOKEN, timeoutMs: 300000 });
 const directory = resolve('data');
 const outputPath = resolve(directory, 'discovery-plan.json');
 

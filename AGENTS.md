@@ -9,7 +9,8 @@ reviewed, server-to-server case projection.
   exports, credentials, personal contact records, or private notes.
 - API keys and Streetli access tokens stay on the server, in ignored local .env
   files or a deployment secret store. Never use browser-exposed env prefixes.
-- The case API reads fixtures or a configured private projection. It does not
+- The case API reads a shared public projection by default, or explicit fixtures
+  or a configured private projection. It does not
   run contact checks, submit reports, or edit Streetli. User-requested reporting
   guidance may do a passive registrar RDAP lookup; it never fetches the bad site.
 - Use real tool progress and preserve errors/unknown states. Fixtures and replays
@@ -35,3 +36,5 @@ reviewed, server-to-server case projection.
 - Commit and push only your own feature branch. Share through PRs into main;
   fetch and merge origin/main after integration. Never force-push, discard
   another agent's work, or write to the other person's feature branch.
+- Agent-to-agent handoffs: follow docs/handoffs/README.md at session start and
+  write to your own log there before ending a session or updating a PR.
