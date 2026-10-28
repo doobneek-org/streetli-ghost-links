@@ -8,8 +8,14 @@ This is a separate hackathon project. The canonical private Streetli checkout re
 
 | Contributor | Branch | Deliverable |
 | --- | --- | --- |
-| Ivan / doobneek-org | `codex/streetli-adapter` | Private adapter in the original Streetli repository; reviewed projection and integration wiring in this repository |
-| TimothyMSSTATE | `codex/dashboard-agent` | Dashboard, agent flow, and CrewAI / Parasail / You.com / One integrations |
+| Ivan / doobneek-org | `codex/streetli-adapter` | Private adapter in the original Streetli repository; case selection, reviewed projection, prompt templates, and evaluation examples |
+| TimothyMSSTATE | `codex/dashboard-agent` | Dashboard, server runtime, provider authentication/configuration wiring, CrewAI orchestration, and You.com / Parasail / One clients |
+
+The human provider-account owner handles sign-ins, event-credit redemption, key
+entry, and connected-app consent. Coding agents implement and test the wiring.
+Local CrewAI is the framework, not a fourth API-key service. Timothy's agent can
+start from the [ready-to-paste handoff](teammate-agent-handoff.md). Domain prompt
+ownership is documented in [prompts/README.md](../prompts/README.md).
 
 Work on these branches and open pull requests into the default branch. Keep changes small enough for the other person to review. Contract changes affect both workstreams: agree on the shape first, update validation and fixtures, and then update consumers. No contributor needs Streetli Firebase credentials or raw logs to build the dashboard against fixtures.
 
@@ -40,7 +46,7 @@ Draft correction messages and inline platform instructions are sufficient for th
 
 ## Sponsor integrations
 
-The intended roles are You.com for public-web discovery, CrewAI for research-task coordination, Parasail for configured model inference, and One for the agreed interface workflow. These are implementation assignments, not claims that any SDK is already installed or connected. Timothy should verify each integration against the event's official brief and current provider documentation, then document what the working demo actually uses.
+The intended roles are You.com for public-web discovery, CrewAI for research-task coordination, Parasail for configured model inference, and One for a reviewer-controlled draft or review ticket in a team workspace. These are implementation assignments, not claims that any SDK is already installed or connected. Timothy should verify each integration against the event's official brief and current provider documentation, then document what the working demo actually uses.
 
 Store sponsor keys and any approved adapter token in a local, server-only `.env`. Share required variable names through `.env.example`; exchange secret values through an appropriate private channel. Never send Firebase/admin credentials, private Streetli endpoint responses, raw logs, or private data to sponsor APIs. Only the approved case projection and selected public evidence may enter research requests.
 
