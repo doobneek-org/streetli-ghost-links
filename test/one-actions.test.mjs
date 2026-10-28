@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createFixtureServer } from '../apps/agent/fixture-server.mjs';
-import { gmailRaw, normalizePhone, oneStatus, runOneAction, serviceListSms, teamTicketText } from '../apps/agent/one-actions.mjs';
+import { gmailRaw, loadOneConfig, normalizePhone, oneConfigPath, oneStatus, runOneAction, serviceListSms, teamTicketText } from '../apps/agent/one-actions.mjs';
 
 const config = {
   discordMessage: { connectionKey: 'live::discord::default::abc', actionId: 'conn_mod_def::discord', method: 'POST', path: '/channels/{channelId}/messages' },
@@ -11,6 +11,55 @@ const config = {
   twilioSms: { connectionKey: 'live::twilio::default::abc', actionId: 'conn_mod_def::twilio', method: 'POST', path: '/2010-04-01/Accounts/{{TWILIO_ACCOUNT_SID}}/Messages.json' }
 };
 const env = { ONE_SECRET: 'sk_test_secret_value', DISCORD_CHANNEL_ID: '1564842098740695100', GHOST_LINKS_SHEET_ID: 'sheet123', TWILIO_ACCOUNT_SID: 'AC123', TWILIO_FROM: '+15005550006' };
+
+test('One config supports a mounted file while retaining the local data default', async () => {
+  const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const directory = await mkdtemp(join(tmpdir(), 'gl-one-config-'));
+  const path = join(directory, 'mounted-actions.json');
+  const previous = process.env.ONE_ACTIONS_FILE;
+  try {
+    assert.match(oneConfigPath({}), /[\\/]data[\\/]one-actions\.json$/);
+    assert.equal(oneConfigPath({ ONE_ACTIONS_FILE: path }), path);
+    await writeFile(path, JSON.stringify(config));
+    process.env.ONE_ACTIONS_FILE = path;
+    assert.deepEqual(await loadOneConfig(), config);
+    assert.deepEqual(await loadOneConfig(join(directory, 'missing.json')), {});
+  } finally {
+    if (previous === undefined) delete process.env.ONE_ACTIONS_FILE; else process.env.ONE_ACTIONS_FILE = previous;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('One setup invokes npx via Node and writes only resolved metadata to its configured file', async () => {
+  const { mkdtemp, mkdir, writeFile, readFile, rm } = await import('node:fs/promises');
+  const { execFileSync } = await import('node:child_process');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const directory = await mkdtemp(join(tmpdir(), 'gl-one-setup-'));
+  try {
+    const bin = join(directory, 'npm bin'); await mkdir(bin);
+    await writeFile(join(bin, 'npx-cli.js'), `
+      const args = process.argv.slice(2);
+      if (args.slice(0, 3).join('|') !== '-y|@withone/cli|--agent') throw new Error('wrong CLI arguments');
+      if (args[3] === 'list') console.log(JSON.stringify({connections:[{platform:'gmail',key:'test-connection'}]}));
+      else if (args.slice(3, 6).join('|') === 'actions|find|gmail') console.log(JSON.stringify({answers:[{selected:[{method:'POST',actionId:'test-action',path:'/v1/gmail/send-email',title:'Send Email'}]}]}));
+      else throw new Error('unexpected action, refusing');
+    `);
+    const outputPath = join(directory, 'mount', 'one-actions.json');
+    const output = execFileSync(process.execPath, [fileURLToPath(new URL('../scripts/one-setup.mjs', import.meta.url))], {
+      cwd: directory, encoding: 'utf8', env: { ...process.env, ONE_SECRET: 'fake-provider-secret',
+        ONE_ACTIONS_FILE: outputPath, npm_execpath: join(bin, 'npm-cli.js') },
+    });
+    const text = await readFile(outputPath, 'utf8');
+    assert.deepEqual(JSON.parse(text).gmailSend, { platform: 'gmail', connectionKey: 'test-connection', actionId: 'test-action',
+      method: 'POST', path: '/v1/gmail/send-email', title: 'Send Email' });
+    assert.doesNotMatch(text + output, /fake-provider-secret/);
+    assert.match(output, /Saved 1 action\(s\)/);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
 
 async function withServer(one, run) {
   const server = await createFixtureServer({ one });

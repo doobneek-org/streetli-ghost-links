@@ -2,6 +2,38 @@
   'use strict';
 
   const $ = id => document.getElementById(id);
+  // A maintainer access code is a scoped browser credential, never a provider key.
+  // Keep it in memory only and attach it solely to this app's same-origin API paths.
+  let researchAccessCode = '';
+  const accessHeaders = (url, headers) => ({ ...headers, ...(researchAccessCode
+    && /^\/api\/[a-z0-9/_-]+(?:\?[^#\\\r\n]*)?$/i.test(url) ? { Authorization: `Bearer ${researchAccessCode}` } : {}) });
+  const accessError = code => {
+    if (code !== 'maintainer_access_required' && code !== 'maintainer_access_not_configured') return null;
+    const message = code === 'maintainer_access_required'
+      ? 'Research access is required. Open Research access, enter the code shared by the maintainer, then retry.'
+      : 'Research access has not been configured on the server yet.';
+    if (code === 'maintainer_access_required') researchAccessCode = '';
+    if ($('research-access')) $('research-access').open = true;
+    if ($('research-access-status')) $('research-access-status').textContent = message;
+    return message;
+  };
+  $('research-access-form')?.addEventListener('submit', event => {
+    event.preventDefault();
+    const input = $('research-access-code');
+    const value = String(input.value || '').trim();
+    input.value = '';
+    if (!/^[A-Za-z0-9_-]{32,256}$/.test(value)) {
+      $('research-access-status').textContent = 'Enter the access code shared by the maintainer (32–256 letters, numbers, underscores or hyphens).';
+      return;
+    }
+    researchAccessCode = value;
+    $('research-access-status').textContent = 'Access code saved for this tab. Retry your action to verify access.';
+  });
+  $('research-access-clear')?.addEventListener('click', () => {
+    researchAccessCode = '';
+    $('research-access-code').value = '';
+    $('research-access-status').textContent = 'Research access cleared.';
+  });
   const elements = {
     form: $('search-form'), input: $('search-input'), list: $('record-list'),
     detail: $('case-detail'), banner: $('source-banner'), status: $('load-status'),
@@ -220,14 +252,14 @@
       if (researchBackendAvailable === false) { status.textContent = 'Reviewer decisions are not connected yet.'; return; }
       buttons.querySelectorAll('button').forEach(button => { button.disabled = true; });
       try {
-        const response = await fetch('/api/review-actions', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ caseId: item.id, decision, note: note.value || '', by: hunterName }) });
+        const response = await fetch('/api/review-actions', { method: 'POST', cache: 'no-store', headers: accessHeaders('/api/review-actions', { 'Content-Type': 'application/json', Accept: 'application/json' }), body: JSON.stringify({ caseId: item.id, decision, note: note.value || '', by: hunterName }) });
         const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'save_failed');
+        if (!response.ok) throw new Error(accessError(payload.error) || 'The decision could not be saved. Try again.');
         if (payload.action) decisions[item.id] = payload.action; else delete decisions[item.id];
         if (Array.isArray(payload.leaderboard)) { board = payload.leaderboard; renderLeaderboard(); }
         renderList();
         if (spooky && decision === 'resolved') setBanner(`👻 Ghost busted${hunterName ? ` by ${hunterName}` : ''}! +10 points.`, 'ready');
-      } catch { status.textContent = 'The decision could not be saved. Try again.'; buttons.querySelectorAll('button').forEach(button => { button.disabled = false; }); }
+      } catch (error) { status.textContent = error.message || 'The decision could not be saved. Try again.'; buttons.querySelectorAll('button').forEach(button => { button.disabled = false; }); }
     };
     const options = current ? [['open', 'Reopen']] : [['resolved', t('Mark resolved', 'Busted 👻 (resolved)')], ['not_an_issue', t('Not an issue', 'False alarm')], ['follow_up', t('Needs follow-up', 'Keep watching')]];
     for (const [decision, label] of options) {
@@ -542,10 +574,10 @@
       else if (message.type === 'error') failure = message.message;
     };
     try {
-      const response = await fetch(url, { method: 'POST', cache: 'no-store', headers: { Accept: 'application/x-ndjson', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const response = await fetch(url, { method: 'POST', cache: 'no-store', headers: accessHeaders(url, { Accept: 'application/x-ndjson', 'Content-Type': 'application/json' }), body: JSON.stringify(body) });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(researchErrors[payload.error] || `Research is unavailable (${payload.error || response.status}).`);
+        throw new Error(accessError(payload.error) || researchErrors[payload.error] || `Research is unavailable (${payload.error || response.status}).`);
       }
       if (response.body?.getReader && typeof TextDecoder === 'function') {
         const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = '';
@@ -708,9 +740,9 @@
     button.disabled = true;
     status.textContent = 'Working…';
     try {
-      const response = await fetch(url, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
+      const response = await fetch(url, { method: 'POST', cache: 'no-store', headers: accessHeaders(url, { 'Content-Type': 'application/json', Accept: 'application/json' }), body: JSON.stringify(body) });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(({ invalid_email: 'Enter a valid email address.', invalid_phone: 'Enter a valid phone number, like 212-555-0123 or +44 20 7946 0958.', no_service_results: 'Run a service search first.', one_throttled: 'Please wait a few seconds and try again.',
+      if (!response.ok) throw new Error(accessError(payload.error) || ({ invalid_email: 'Enter a valid email address.', invalid_phone: 'Enter a valid phone number, like 212-555-0123 or +44 20 7946 0958.', no_service_results: 'Run a service search first.', one_throttled: 'Please wait a few seconds and try again.',
         one_action_failed: `One could not complete the action${payload.platformStatus ? ` (the app returned ${payload.platformStatus})` : ''}. Check the connection in One.` })[payload.error]
         || (String(payload.error || '').includes('not_configured') ? 'That app is not connected in One yet.' : 'The action failed.'));
       status.textContent = success(payload);
@@ -1012,7 +1044,7 @@
   async function showSaved(text) {
     const output = $('route-output');
     try {
-      const response = await fetch('/api/route/cached', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ request: text }) });
+      const response = await fetch('/api/route/cached', { method: 'POST', cache: 'no-store', headers: accessHeaders('/api/route/cached', { 'Content-Type': 'application/json', Accept: 'application/json' }), body: JSON.stringify({ request: text }) });
       if (!response.ok) throw new Error('miss');
       const result = await response.json();
       const banner = make('p', 'demo-banner', `Saved result from ${checkedTime(result.savedAt)}. Not a live check.`);

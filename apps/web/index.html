@@ -35,6 +35,17 @@
       <p class="search-note" data-spooky="Typing sifts the crypt instantly. Press Summon and Parasail, guided by a CrewAI coven, decides whether to hunt haunted records, check a calamity, or seek safe havens with You.com.">Typing filters the loaded records instantly. Press Ask and Parasail, coordinated by CrewAI, decides whether to search the records, check an event, or find services with You.com.</p>
       <label class="demo-toggle"><input id="demo-mode" type="checkbox"> <span data-spooky="⚡ Demo mode: summon saved visions when available">⚡ Demo mode: show saved results when available</span></label>
       <p id="research-capability-note" class="search-note" role="status" hidden></p>
+      <details id="research-access" class="search-note">
+        <summary>Research access</summary>
+        <p>Enter the access code shared by the maintainer to run research and save decisions. It stays in memory for this tab and clears on reload. Provider API keys belong on the server.</p>
+        <form id="research-access-form" class="one-form">
+          <label class="sr-only" for="research-access-code">Research access code</label>
+          <input id="research-access-code" class="decision-note" type="password" autocomplete="off" maxlength="256" placeholder="Access code" spellcheck="false">
+          <button class="secondary-button" type="submit">Use code</button>
+          <button id="research-access-clear" class="secondary-button" type="button">Clear access</button>
+        </form>
+        <p id="research-access-status" role="status" aria-live="polite">No access code entered. Local development works without one.</p>
+      </details>
       <div id="route-output" class="research-output route-output"></div>
     </section>
 

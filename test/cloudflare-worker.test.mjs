@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createCloudflareWorker } from '../apps/cloudflare/worker.mjs';
 import { PUBLIC_CASES_URL } from '../packages/contracts/case-source.mjs';
+import { oneStatus } from '../apps/agent/one-actions.mjs';
 
 const fixture = JSON.parse(await readFile(new URL('../fixtures/cases.demo.json', import.meta.url), 'utf8'));
 const live = () => {
@@ -100,6 +101,74 @@ test('unsafe backend configuration, cross-site mutations and unknown proxy paths
   assert.equal((await worker.fetch(request('/api/cases', { method: 'POST' }))).status, 405);
   assert.equal((await worker.fetch(request('/api/discovery/findings?url=https://arbitrary.org'))).status, 400);
   assert.equal(calls, 0);
+});
+
+test('One status is an open, read-only capability response using only backend credentials', async () => {
+  const environment = { RESEARCH_BACKEND_URL: 'https://research.example.org/base/', RESEARCH_BACKEND_TOKEN: BACKEND_TOKEN, MAINTAINER_TOKEN };
+  const actions = Object.fromEntries(['discordMessage', 'gmailSend', 'sheetsAppend', 'twilioSms'].map(name => [name,
+    { actionId: 'private-action-id', connectionKey: 'private-connection-key', path: '/private-action-path' }]));
+  const status = oneStatus(actions, { ONE_SECRET: 'private-provider-key', DISCORD_CHANNEL_ID: 'private-channel',
+    GHOST_LINKS_SHEET_ID: 'private-sheet', TWILIO_ACCOUNT_SID: 'private-account', TWILIO_FROM: 'private-phone' });
+  let calls = 0;
+  const worker = createCloudflareWorker({ fetchImpl: async (url, options) => {
+    calls++; assert.equal(String(url), 'https://research.example.org/base/api/one/status');
+    assert.equal(options.method, 'GET'); assert.equal(options.body, undefined);
+    assert.deepEqual(options.headers, { Authorization: `Bearer ${BACKEND_TOKEN}`, Accept: 'application/json' });
+    return json(status);
+  } });
+  const response = await worker.fetch(request('/api/one/status', { headers: { Authorization: 'private-caller-token',
+    Cookie: 'private-caller-cookie', Origin: 'https://you.doobneek.org' } }), environment);
+  assert.equal(response.status, 200); assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  const body = await response.text(); assert.doesNotMatch(body, /private-/);
+  assert.deepEqual(JSON.parse(body), { configured: true, discord: true, gmail: true, sheets: true, sms: true });
+  assert.equal((await worker.fetch(request('/api/one/status', { method: 'POST', body: '{}' }), environment)).status, 405);
+  assert.equal((await worker.fetch(request('/api/one/status?secret=private'), environment)).status, 400);
+  assert.equal(calls, 1);
+});
+
+test('every One send route requires a maintainer and forwards only the backend token', async () => {
+  const environment = { RESEARCH_BACKEND_URL: 'https://research.example.org', RESEARCH_BACKEND_TOKEN: BACKEND_TOKEN, MAINTAINER_TOKEN };
+  const calls = [];
+  const worker = createCloudflareWorker({ fetchImpl: async (url, options) => {
+    calls.push({ url: String(url), options }); return json({ ok: true });
+  } });
+  for (const path of ['/api/one/team-ticket', '/api/one/email-list', '/api/one/ghost-report', '/api/one/text-list', '/api/one/log-event']) {
+    assert.equal((await worker.fetch(request(path, { method: 'POST', body: '{}' }), environment)).status, 401);
+    assert.equal((await worker.fetch(request(path, { method: 'POST', headers: { Authorization: `Bearer ${BACKEND_TOKEN}` }, body: '{}' }), environment)).status, 401);
+    assert.equal((await worker.fetch(request(path), environment)).status, 405);
+    const response = await worker.fetch(request(path, { method: 'POST', headers: { Authorization: `Bearer ${MAINTAINER_TOKEN}`,
+      Cookie: 'private', Origin: 'https://you.doobneek.org' }, body: '{"to":"reviewer@example.org"}' }), environment);
+    assert.equal(response.status, 200);
+    const sent = calls.at(-1); assert.equal(sent.url, `https://research.example.org${path}`);
+    assert.equal(sent.options.headers.Authorization, `Bearer ${BACKEND_TOKEN}`);
+    assert.equal(sent.options.headers['Content-Type'], 'application/json');
+    assert.ok(!Object.hasOwn(sent.options.headers, 'Cookie')); assert.ok(!Object.hasOwn(sent.options.headers, 'Origin'));
+    assert.equal(sent.options.body, '{"to":"reviewer@example.org"}');
+  }
+  assert.equal(calls.length, 5);
+  assert.equal((await worker.fetch(request('/api/one/arbitrary', { method: 'POST', body: '{}' }), environment)).status, 404);
+  assert.equal(calls.length, 5);
+});
+
+test('saved demo results use the guarded proxy and preserve their saved-result label', async () => {
+  const environment = { RESEARCH_BACKEND_URL: 'https://research.example.org/base/', RESEARCH_BACKEND_TOKEN: BACKEND_TOKEN, MAINTAINER_TOKEN };
+  let calls = 0;
+  const worker = createCloudflareWorker({ fetchImpl: async (url, options) => {
+    calls++; assert.equal(String(url), 'https://research.example.org/base/api/route/cached');
+    assert.equal(options.method, 'POST'); assert.equal(options.headers.Authorization, `Bearer ${BACKEND_TOKEN}`);
+    assert.equal(options.body, '{"request":"food pantry in Harlem"}');
+    return json({ kind: 'find', services: [], cached: true, savedAt: '2026-10-28T22:00:00Z' });
+  } });
+  assert.equal((await worker.fetch(request('/api/route/cached', { method: 'POST', body: '{}' }), environment)).status, 401);
+  assert.equal((await worker.fetch(request('/api/route/cached'), environment)).status, 405);
+  assert.equal((await worker.fetch(request('/api/route/cached?request=food', { method: 'POST',
+    headers: { Authorization: `Bearer ${MAINTAINER_TOKEN}` }, body: '{}' }), environment)).status, 400);
+  assert.equal(calls, 0);
+  const response = await worker.fetch(request('/api/route/cached', { method: 'POST',
+    headers: { Authorization: `Bearer ${MAINTAINER_TOKEN}` }, body: '{"request":"food pantry in Harlem"}' }), environment);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { kind: 'find', services: [], cached: true, savedAt: '2026-10-28T22:00:00Z' });
+  assert.equal(calls, 1);
 });
 
 test('backend failures sanitize private diagnostics and oversized mutation bodies never reach it', async () => {
