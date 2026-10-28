@@ -113,14 +113,14 @@
   // ---- Maintainer dashboard: failed verifications grouped by category ----
   const categories = [
     { id: 'compromise', title: 'Possible compromise', tone: 'found', detail: 'Scam content, suspected takeover, repurposed or parked domains',
-      codes: ['website_scam_content', 'website_suspected_compromise', 'website_repurposed', 'website_domain_parked', 'scan_suspected_compromise', 'scan_parked_domain', 'scan_organization_mismatch', 'scan_unverified_content_review'] },
+      codes: ['website_scam_content', 'website_suspected_compromise', 'website_repurposed', 'website_domain_parked', 'scan_suspected_compromise', 'scan_parked_domain'] },
     { id: 'website', title: 'Broken websites', tone: 'maybe', detail: 'Pages that no longer load', codes: ['website_not_found', 'invalid_website'] },
     { id: 'phone', title: 'Bad phone numbers', tone: 'maybe', detail: 'Numbers flagged disconnected', codes: ['phone_disconnected'] },
     { id: 'email', title: 'Bad emails', tone: 'maybe', detail: 'Addresses or domains that fail delivery checks', codes: ['email_invalid', 'email_domain_no_mx'] },
     { id: 'scan', title: 'Automated scan leads', tone: 'unknown', detail: 'Website review leads, including former links that may still be listed elsewhere', codes: ['scan_historical_reference'] },
     { id: 'other', title: 'Other flags', tone: 'unknown', detail: 'Invalid, risky or manually flagged contacts', codes: [] }
   ];
-  const compromiseRank = ['website_scam_content', 'website_suspected_compromise', 'scan_suspected_compromise', 'scan_organization_mismatch', 'website_repurposed', 'website_domain_parked', 'scan_parked_domain', 'scan_unverified_content_review'];
+  const compromiseRank = ['website_scam_content', 'website_suspected_compromise', 'scan_suspected_compromise', 'website_repurposed', 'website_domain_parked', 'scan_parked_domain'];
   const categoryOf = item => {
     const known = categories.find(category => category.codes.includes(item.internal.reasonCode))?.id;
     if (known) return known;
