@@ -41,9 +41,14 @@ def main() -> None:
     parser.add_argument("--org")
     parser.add_argument("--locality", default="")
     parser.add_argument("--jsonl", action="store_true")
+    parser.add_argument("--stdin", action="store_true",
+                        help='Read {"case": {...}, "manualTest": bool} from stdin (used by the Node server)')
     args = parser.parse_args()
 
-    if args.case_id:
+    if args.stdin:
+        payload = json.load(sys.stdin)
+        case, manual = payload["case"], bool(payload.get("manualTest"))
+    elif args.case_id:
         case, manual = load_case(args.case_id), False
     elif args.manual_test and args.value and args.org:
         manual = True

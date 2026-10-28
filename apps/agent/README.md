@@ -25,8 +25,17 @@ These roles are planned. Add setup details and exact SDK/API usage as integratio
 
 ## Research flow (Python, working from the command line)
 
-`research/` holds a CrewAI flow that researches one case. It is not yet wired
-into the web app.
+`research/` holds a CrewAI flow that researches one case. The web app runs it
+through `research-route.mjs`, which spawns the venv's Python and streams NDJSON
+progress to the browser:
+
+- `POST /api/research?caseId=<id>`: live cases with `reviewState:
+  "approved_for_research"` only. Fixtures return 409 `fixture_research_disabled`;
+  unapproved cases return 409 `research_requires_approval`.
+- `POST /api/research/test` with `{kind, value, organization, locality}`: the
+  labeled pipeline test behind the "Test the research pipeline" form.
+- One run at a time (429 `research_busy`), 180 s timeout, and 503
+  `research_runtime_missing` if `apps/agent/.venv` is not installed.
 
 | Step | Runs on | What it does |
 | --- | --- | --- |

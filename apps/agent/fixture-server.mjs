@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { validateCaseFeed } from '../../packages/contracts/cases.mjs';
+import { createResearchRunner, manualTestCase } from './research-route.mjs';
 
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 const contentTypes = { '/': 'text/html; charset=utf-8', '/app.js': 'text/javascript; charset=utf-8', '/styles.css': 'text/css; charset=utf-8' };
@@ -62,7 +63,16 @@ export function createLiveSource({ sourceUrl, token, fetchImpl = fetch, ttlMs = 
   };
 }
 
-export async function createFixtureServer({ sourceUrl = '', token = '', fetchImpl = fetch, source = null } = {}) {
+async function readJsonBody(request, limit = 4096) {
+  let body = '';
+  for await (const chunk of request) {
+    body += chunk;
+    if (body.length > limit) throw safeError('request_too_large', 413);
+  }
+  try { return JSON.parse(body); } catch { throw safeError('invalid_request', 400); }
+}
+
+export async function createFixtureServer({ sourceUrl = '', token = '', fetchImpl = fetch, source = null, research = createResearchRunner() } = {}) {
   const fixture = validateCaseFeed(JSON.parse(await readFile(new URL('../../fixtures/cases.demo.json', import.meta.url), 'utf8')));
   const mode = source || sourceUrl ? 'live' : 'fixture';
   const getCases = source || (sourceUrl ? createLiveSource({ sourceUrl, token, fetchImpl }) : async () => fixture);
@@ -104,6 +114,28 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
         lastFeed = validateCaseFeed(await getCases({ refresh: true }));
         return send(200, lastFeed);
       }
+      // Research runs only on an explicit click, for an approved real case or a labeled manual test.
+      if ((path === '/api/research' || path === '/api/research/test') && request.method === 'POST') {
+        let payload;
+        if (path === '/api/research') {
+          const params = new URL(request.url, `http://${host}`).searchParams;
+          const caseId = params.get('caseId') || '';
+          if (!/^[A-Za-z0-9_-]{1,200}$/.test(caseId) || [...params.keys()].some(key => key !== 'caseId')) return send(400, { error: 'invalid_case_request' });
+          lastFeed = validateCaseFeed(await getCases());
+          if (lastFeed.mode !== 'live') return send(409, { error: 'fixture_research_disabled' });
+          const selected = lastFeed.cases.find(item => item.id === caseId);
+          if (!selected) return send(404, { error: 'case_not_found' });
+          if (selected.reviewState !== 'approved_for_research') return send(409, { error: 'research_requires_approval' });
+          payload = { case: { ...selected, _mode: lastFeed.mode }, manualTest: false };
+        } else {
+          const manual = manualTestCase(await readJsonBody(request));
+          if (!manual) return send(400, { error: 'invalid_manual_test' });
+          payload = { case: manual, manualTest: true };
+        }
+        if (!research.available()) return send(503, { error: 'research_runtime_missing' });
+        if (research.busy) return send(429, { error: 'research_busy' });
+        return research.run(response, payload);
+      }
       if (request.method !== 'GET') { response.setHeader('Allow', path === '/api/refresh' ? 'POST' : 'GET'); return send(405, { error: 'read_only_case_api' }); }
       if (Object.hasOwn(assetNames, path)) {
         const content = await readFile(new URL(`../web/${assetNames[path]}`, import.meta.url));
@@ -111,7 +143,7 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
       }
       return send(404, { error: 'not_found' });
     } catch (error) {
-      return send(error.status || 503, { error: ['case_source_unavailable', 'case_source_unauthorized', 'case_source_invalid_response', 'case_source_too_large'].includes(error.code) ? error.code : 'case_data_unavailable', mode });
+      return send(error.status || 503, { error: ['case_source_unavailable', 'case_source_unauthorized', 'case_source_invalid_response', 'case_source_too_large', 'invalid_request', 'request_too_large'].includes(error.code) ? error.code : 'case_data_unavailable', mode });
     }
   });
 }

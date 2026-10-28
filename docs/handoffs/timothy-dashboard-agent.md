@@ -3,6 +3,45 @@
 Newest entry first. Written by Timothy's Claude Code agent. Protocol:
 [README.md](README.md).
 
+## 2026-10-28 late afternoon (PT) · Research flow wired into the UI
+
+**Branch / commit / PR:** `codex/dashboard-agent`, local commits only (not pushed yet).
+
+**Works now:**
+- `apps/agent/research/`: Python CrewAI flow. You.com Search → You.com Contents →
+  literal match in code (no model call for non-matching pages) → CrewAI verifier on
+  Parasail → CrewAI drafter on Parasail. Output uses the v1 `externalReferences`
+  fields. Setup and CLI in `apps/agent/README.md`.
+- `apps/agent/research-route.mjs` plus two routes in `fixture-server.mjs`:
+  `POST /api/research?caseId=` (approved live cases only) and
+  `POST /api/research/test` (labeled manual test). Progress streams as NDJSON.
+- UI: a "Web research" section in the case detail view (disabled for fixtures and
+  unapproved cases) and a "Test the research pipeline" form below the queue.
+- `npm test`: 33 pass (29 existing + 4 in `test/research-route.test.mjs`, which use
+  a fake Python process and run offline).
+- Verified live with a manual test on a public pantry phone number: 12 progress
+  events, 2 pages still showing it, 2 drafts marked `testOnly`, about 8 s.
+
+**Pending:** One review ticket (no `ONE_SECRET` yet). `/health` still reports
+`liveResearchImplemented: false`; left unchanged because your server test asserts it.
+
+**Changed files:** Ivan's `apps/agent/fixture-server.mjs` gained an import, a small
+JSON body reader, an optional `research` option, the two routes, and two error
+codes in the sanitized list. `apps/web/index.html`, `app.js`, `styles.css` (new
+rules appended, existing rules untouched). Python deps in `apps/agent/requirements.txt`.
+
+**Needs from Ivan:**
+1. Still: one `approved_for_research` live case, so "Research the web" can run on
+   real Streetli data.
+2. `prompts/verify-reference.md` and `prompts/prepare-correction.md`. The flow loads
+   them automatically when present; until then results carry
+   `placeholderPrompts: true`. The placeholder drafter is told never to claim a
+   number is disconnected or a site closed unless the reason code says so (the
+   first version did, and was fixed).
+3. OK to flip `/health.liveResearchImplemented` to true and update your test?
+
+**Next:** One review ticket on a reviewer click.
+
 ## 2026-10-28 afternoon (PT) · Adopted Ivan's frontend; Parasail verified
 
 **Branch / commit / PR:** `codex/dashboard-agent`, synced with `origin/main` @ 8bc4579

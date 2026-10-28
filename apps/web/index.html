@@ -41,6 +41,20 @@
       </div>
       <p class="coverage-note" id="coverage-note">Coverage: retained records only. Past flags do not establish a current error.</p>
     </section>
+
+    <section class="pipeline-test" aria-labelledby="pipeline-test-title">
+      <div class="eyebrow">Developer check</div>
+      <h2 id="pipeline-test-title">Test the research pipeline</h2>
+      <p class="pipeline-intro">Runs a real You.com search and a CrewAI/Parasail check on an identifier you enter. It is not a Streetli case, and any correction draft is marked test-only.</p>
+      <form id="pipeline-form" class="pipeline-form">
+        <label>Type <select id="pipeline-kind"><option value="phone">Phone</option><option value="website">Website</option><option value="email">Email</option></select></label>
+        <label>Identifier <input id="pipeline-value" type="text" autocomplete="off" required maxlength="300" placeholder="+17185550100 or https://old-site.org"></label>
+        <label>Organization <input id="pipeline-org" type="text" autocomplete="off" required maxlength="200" placeholder="Organization name"></label>
+        <label>Locality <input id="pipeline-locality" type="text" autocomplete="off" maxlength="160" placeholder="Brooklyn, NY"></label>
+        <button id="pipeline-submit" class="primary-button" type="submit">Run test</button>
+      </form>
+      <div id="pipeline-output" class="research-output"></div>
+    </section>
   </main>
   <footer class="app-footer"><span class="footer-wordmark">ghost links</span><span>Read-only review · external verification not run.</span><a href="https://github.com/doobneek-org/streetli-ghost-links" target="_blank" rel="noopener noreferrer">Open source <span aria-hidden="true">↗</span></a></footer>
 </body>

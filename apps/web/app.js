@@ -221,8 +221,125 @@
         loadReportingPlan(item, stepsBox);
       }
     });
-    elements.detail.append(kicker, make('h3', 'detail-title', item.organization.name), make('p', 'detail-locality', item.organization.locality), identifier, facts, context, links, make('p', 'detail-footnote', feed?.mode === 'fixture' ? 'Fictional example · do not report this case to a real platform.' : 'Opening web search sends this identifier and organization name to Google.'), toggle, stepsBox);
+    elements.detail.append(kicker, make('h3', 'detail-title', item.organization.name), make('p', 'detail-locality', item.organization.locality), identifier, facts, context, links, make('p', 'detail-footnote', feed?.mode === 'fixture' ? 'Fictional example · do not report this case to a real platform.' : 'Opening web search sends this identifier and organization name to Google.'), researchSection(item), toggle, stepsBox);
   }
+
+  // ---- Web research: You.com search + CrewAI/Parasail verification, streamed from the server ----
+  const researchStates = {
+    still_present: ['Still shows it', 'found'], possible_match: ['Possible match', 'maybe'],
+    not_present: ['Not present', 'clear'], unknown: ['Unknown', 'unknown']
+  };
+  const researchErrors = {
+    fixture_research_disabled: 'Live research is off for fictional fixtures.',
+    research_requires_approval: 'Research runs only on cases approved for research.',
+    research_runtime_missing: 'The Python research runtime is not installed. See apps/agent/README.md.',
+    research_busy: 'Another research run is in progress. Try again when it finishes.',
+    invalid_manual_test: 'Enter a type, an identifier, and an organization name.'
+  };
+
+  function researchSection(item) {
+    const section = make('section', 'research');
+    const fixture = feed?.mode === 'fixture';
+    const approved = item.reviewState === 'approved_for_research';
+    const button = make('button', 'primary-button research-button', 'Research the web');
+    button.type = 'button';
+    button.disabled = fixture || !approved;
+    const note = make('p', 'research-note', fixture
+      ? 'Live research is off for fictional fixtures. Use the pipeline test below the queue to watch a real run.'
+      : !approved ? 'Research runs only on cases approved for research.'
+      : 'Searches You.com for this identifier, then a CrewAI agent on Parasail checks each page. Nothing is sent.');
+    const output = make('div', 'research-output');
+    button.addEventListener('click', () => runResearch(`/api/research?caseId=${encodeURIComponent(item.id)}`, {}, output, button));
+    section.append(make('div', 'eyebrow', 'Web research'), button, note, output);
+    return section;
+  }
+
+  function progressItem(event) {
+    const row = make('li', `research-step step-${event.status}`);
+    row.append(make('span', 'step-icon', ({ done: '✓', start: '…', error: '✗' })[event.status] || '·'), make('span', 'step-name', event.step), make('span', 'step-message', event.message));
+    return row;
+  }
+
+  async function runResearch(url, body, output, button) {
+    const label = button.textContent;
+    button.disabled = true; button.textContent = 'Researching…';
+    const live = make('p', 'research-live', 'Starting research…');
+    live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite');
+    const progress = make('ol', 'research-progress');
+    output.replaceChildren(live, progress);
+    let result = null; let failure = null;
+    const handle = line => {
+      if (!line.trim()) return;
+      let message;
+      try { message = JSON.parse(line); } catch { return; }
+      if (message.type === 'event') { progress.append(progressItem(message)); live.textContent = message.message; }
+      else if (message.type === 'result') result = message;
+      else if (message.type === 'error') failure = message.message;
+    };
+    try {
+      const response = await fetch(url, { method: 'POST', cache: 'no-store', headers: { Accept: 'application/x-ndjson', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(researchErrors[payload.error] || `Research is unavailable (${payload.error || response.status}).`);
+      }
+      if (response.body?.getReader && typeof TextDecoder === 'function') {
+        const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = '';
+        for (;;) {
+          const { done, value } = await reader.read();
+          buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+          const lines = buffer.split('\n'); buffer = lines.pop();
+          lines.forEach(handle);
+          if (done) { handle(buffer); break; }
+        }
+      } else (await response.text()).split('\n').forEach(handle);
+    } catch (error) { failure = error.message || 'Research failed.'; }
+    finally { button.disabled = false; button.textContent = label; }
+    if (result) {
+      live.textContent = result.stopped ? 'Research stopped before searching.' : 'Research finished. Review the evidence before any correction request.';
+      output.append(renderResearchResult(result));
+    }
+    if (failure) output.append(make('p', 'research-error', failure));
+    if (!result && !failure) output.append(make('p', 'research-error', 'Research ended without a result.'));
+  }
+
+  function renderResearchResult(result) {
+    const box = make('div', 'research-result');
+    const flags = make('div', 'research-flags');
+    if (result.manualTest) flags.append(make('span', 'research-flag test', 'Pipeline test · not a Streetli case'));
+    if (result.placeholderPrompts) flags.append(make('span', 'research-flag', 'Placeholder prompts · pending review'));
+    if (flags.childNodes.length) box.append(flags);
+    if (result.stopped) { box.append(make('p', 'research-error', result.stopped)); return box; }
+    const refs = Array.isArray(result.externalReferences) ? result.externalReferences.slice(0, 20) : [];
+    const count = state => refs.filter(ref => ref.state === state).length;
+    box.append(make('p', 'research-summary', refs.length
+      ? `${refs.length} pages checked · ${count('still_present')} still show it · ${count('possible_match')} possible · ${count('not_present')} not present · ${count('unknown')} unknown`
+      : 'No candidate pages were found. An empty search does not prove the identifier is gone from the web.'));
+    for (const ref of refs) {
+      const [title, tone] = researchStates[ref.state] || ['Unknown', 'unknown'];
+      const card = make('div', `evidence evidence-${tone}`);
+      const head = make('div', 'evidence-head');
+      head.append(make('span', `evidence-state ${tone}`, title), externalAnchor(`${ref.url} ↗`, ref.url, 'evidence-link') || make('span', 'evidence-link', ref.url));
+      card.append(head);
+      if (ref.quote) card.append(make('blockquote', 'evidence-quote', `“${ref.quote}”`));
+      if (result.notes?.[ref.url]) card.append(make('p', 'evidence-note', result.notes[ref.url]));
+      card.append(make('p', 'evidence-meta', `Checked ${checkedTime(ref.observedAt)} · report: ${String(ref.reportState || 'not_started').replace(/_/g, ' ')}`));
+      const draft = result.drafts?.[ref.url];
+      if (draft) {
+        const panel = make('div', 'draft');
+        panel.append(make('div', 'eyebrow', draft.testOnly ? 'Correction draft · test only, do not send' : 'Correction draft · not sent'), make('p', 'draft-message', draft.message), make('p', 'draft-how', draft.how_to_submit));
+        card.append(panel);
+      }
+      box.append(card);
+    }
+    box.append(make('p', 'report-status', 'No report or message has been sent by this app. A reviewer decides what to submit.'));
+    return box;
+  }
+
+  const pipeline = { form: $('pipeline-form'), kind: $('pipeline-kind'), value: $('pipeline-value'), org: $('pipeline-org'), locality: $('pipeline-locality'), submit: $('pipeline-submit'), output: $('pipeline-output') };
+  if (pipeline.form) pipeline.form.addEventListener('submit', event => {
+    event.preventDefault();
+    runResearch('/api/research/test', { kind: pipeline.kind.value, value: pipeline.value.value, organization: pipeline.org.value, locality: pipeline.locality.value }, pipeline.output, pipeline.submit);
+  });
 
   async function loadReportingPlan(item, container) {
     const status = make('p', 'report-lookup-status', item.identifier.kind === 'website' ? 'Looking up the current registrar and reporting routes…' : 'Loading reporting routes…');
