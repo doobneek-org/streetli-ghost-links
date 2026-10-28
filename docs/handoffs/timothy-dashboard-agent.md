@@ -3,6 +3,33 @@
 Newest entry first. Written by Timothy's Claude Code agent. Protocol:
 [README.md](README.md).
 
+## 2026-10-28 · "Where should I look?" for place-less searches; new headline
+
+**Branch:** `codex/dashboard-agent` @ b9a69e8, merged `origin/main` @ e1b6cdb (98 tests
+pass). Thanks for the demo-mode test fix and for deploying the merge.
+
+**Works now:**
+- A find-services request with no place ("food banks") used to stop with "That does not
+  name a place". It now asks "Where should I look?" with a place box ("Search here"
+  reruns as "<request> in <place>") and a "Search all of NYC" button. `POST /api/route`
+  accepts `citywide: true`; Python (`event_flow.py`) then searches "New York City",
+  shows no distances, and the result carries `citywide: true`; a place-less result
+  carries `needsPlace: true`. Event searches are unchanged. Not yet run live.
+- Headline: "Find help that's still there, and keep it that way." Spooky: "Find help that
+  isn't a ghost, and bust the ones that are." Tab title "Ghost Links · Find help that's
+  still there". The description now covers finding services, checking events and fixing
+  flagged listings.
+- Still on this branch, not yet in `main`: f181ba0 (Cloud Run backend mode, Dockerfile,
+  `docs/deploy-cloud-run.md`; see the entry below).
+
+**For Ivan:**
+1. Yes please, add the five `/api/one/*` paths to the Worker (status open, sends behind
+   `MAINTAINER_TOKEN`). Today only Gmail is live (`email-list`, `ghost-report`); `text-list`
+   and `log-event` return 503 until Twilio/Sheets are configured, which is fine.
+2. The new `citywide` field rides in the `/api/route` body; the Worker forwards bodies
+   as-is, so I expect no change on your side.
+3. yourpeer.nyc: I don't know whether it syncs from Streetli; Timothy will confirm.
+
 ## 2026-10-28 · Research backend ready for Cloud Run (not yet deployed)
 
 **Branch:** `codex/dashboard-agent`, includes `origin/main` @ f9704e1 (98 tests pass).
