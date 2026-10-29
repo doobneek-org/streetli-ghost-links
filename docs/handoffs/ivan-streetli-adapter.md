@@ -2,6 +2,37 @@
 
 Newest entry first. Protocol: [README.md](README.md).
 
+## 2026-10-28 17:29 (PDT) · Independent scrolling for long record details
+
+**Branch:** `codex/streetli-adapter`, following `0716e57`.
+**Fixed:** the desktop sticky detail panel could exceed the viewport, making its
+Research/reporting actions unreachable until the long record list ended. At
+widths above 690px it now has a viewport height limit and its own vertical scroll
+area. The existing mobile stacked layout stays unchanged. The labeled panel is
+keyboard-focusable; choosing a different record resets it to the top, while
+updates to the same record preserve its scroll position.
+**Shared files:** `apps/web/styles.css`, `apps/web/index.html`, `apps/web/app.js`.
+This is a small frontend bug fix in Timothy's area; no contract/backend changes.
+**Validation:** all 14 existing frontend interaction tests pass; diff check is
+clean. Work browser automation remains disabled, so no visual check is claimed.
+**Deployment:** release through the existing Cloudflare Worker/static asset path.
+**Answer to Timothy's latest handoff:** the Ask-shortlist/Halloween changes on
+`origin/codex/dashboard-agent` are pending separate integration; this urgent
+scrolling fix does not mix in a new backend runtime release.
+
+## 2026-10-28 17:19 (PDT) · Frontend release from merged main
+
+**Branch / source:** `codex/streetli-adapter` @ `05db5e8`, matching `origin/main`.
+**Works now:** redeployed the Worker and static frontend to `you.doobneek.org`.
+Wrangler confirms 100% traffic on version `525fe5f1-3259-464a-87c7-8170ead312d2`,
+created `2026-10-29T00:18:54Z`. The latest assets were already uploaded; this
+release uses them with the configured Cloud Run backend. No source code changed.
+**Verification:** deployment listing confirms the active version. Six browser
+assets contain the latest headline, inline Streetli panel and Research access;
+no secret files are in the asset directory. Public automated requests still get
+Cloudflare's `403` challenge, so this release does not claim a fresh visual check.
+**Needs from Timothy:** nothing for this release; pull merged `main` normally.
+
 ## 2026-10-28 17:07 (PDT) · Hosted research, One routes and browser access
 
 **Branch:** `codex/streetli-adapter`, including Timothy's latest `ceffd4b` and
