@@ -87,6 +87,12 @@ function startStream(response) {
   return line => { if (!response.writableEnded) response.write(`${JSON.stringify(line)}\n`); };
 }
 
+function requestErrorMessage(code) {
+  if (code === 'provider_busy') return 'The model provider is busy. Please retry shortly.';
+  if (code === 'provider_timeout') return 'The model provider timed out. Please retry.';
+  return 'The request could not be interpreted. Try rephrasing it.';
+}
+
 async function streamDiscovery(response, feed, options) {
   const write = startStream(response);
   const describe = event => event.type === 'plan' ? { step: 'plan', status: 'done', message: `${event.running} of ${event.due} due jobs running · ${event.eligible} eligible records · ${event.skipped?.freshCache || 0} fresh in cache` }
@@ -246,7 +252,7 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
         const runStage = (stage, input) => python({ stage, input });
         try {
           const result = await answerRequest(text, lastFeed, { runStage, eligibleCaseIds: eligible, onEvent: event => write({ type: 'event', ...event }) });
-          write(result.error ? { type: 'error', message: 'The request could not be interpreted. Try rephrasing it.' } : { type: 'result', kind: 'ask', ...result });
+          write(result.error ? { type: 'error', message: requestErrorMessage(result.error) } : { type: 'result', kind: 'ask', ...result });
         } catch { write({ type: 'error', message: 'The request failed. Check the server console and provider keys.' }); }
         return response.end();
       }
@@ -266,6 +272,9 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
         if (text.length < 3 || text.length > 300 || /[\u0000-\u001f]/.test(text)) return send(400, { error: 'invalid_request_text' });
         if (!discovery.available()) return send(503, { error: 'research_runtime_missing' });
         if (research.busy || discovery.busy || routing) return send(429, { error: 'research_busy' });
+        // The person chose "search all of New York City" after being asked where to look.
+        const citywide = body?.citywide === true;
+        const cacheKey = citywide ? `${text} (all of New York City)` : text;
         routing = true;
         const write = startStream(response);
         const onEvent = event => write({ type: 'event', ...event });
@@ -273,6 +282,11 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
           lastFeed = validateCaseFeed(await getCases());
           onEvent({ step: 'route', status: 'start', message: 'Parasail deciding how to handle this via CrewAI' });
           const routed = await python({ stage: 'route-request', input: { request: text } });
+          if (routed.error || !routed.output) {
+            const { stageFailureCode } = await import('./ask.mjs');
+            write({ type: 'error', message: requestErrorMessage(stageFailureCode(routed.error)) });
+            return response.end();
+          }
           const route = ['records', 'event', 'find_services', 'unsupported'].includes(routed.output?.route) ? routed.output.route : 'unsupported';
           onEvent({ step: 'route', status: 'done', message: `${route.replace('_', ' ')}: ${String(routed.output?.reason || '').slice(0, 200)}` });
           if (route === 'records') {
@@ -280,13 +294,13 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
             const { answerRequest } = await import('./ask.mjs');
             const result = await answerRequest(text, lastFeed, { runStage: (stage, input) => python({ stage, input }), eligibleCaseIds: eligible, onEvent });
             if (!result.error) await saveRouteCache(text, { kind: 'ask', route, ...result });
-            write(result.error ? { type: 'error', message: 'The request could not be interpreted. Try rephrasing it.' } : { type: 'result', kind: 'ask', route, ...result });
+            write(result.error ? { type: 'error', message: requestErrorMessage(result.error) } : { type: 'result', kind: 'ask', route, ...result });
           } else if (route === 'event' || route === 'find_services') {
             // Only real provider names may go to live search; fictional fixtures stay local.
             const cases = lastFeed.mode === 'live' ? lastFeed.cases.slice(0, 2000).map(item => ({ id: item.id, name: item.organization.name, locality: item.organization.locality })) : [];
-            const result = await python({ eventText: text, cases, findOnly: route === 'find_services' }, { onEvent });
+            const result = await python({ eventText: text, cases, findOnly: route === 'find_services', citywide }, { onEvent });
             const { annotateRisk } = await import('./ask.mjs');
-            if (result.kind) { lastServiceResult = { ...result, services: annotateRisk(result.services, lastFeed) }; if (!result.stopped) await saveRouteCache(text, { route, ...lastServiceResult }); }
+            if (result.kind) { lastServiceResult = { ...result, services: annotateRisk(result.services, lastFeed) }; if (!result.stopped) await saveRouteCache(cacheKey, { route, ...lastServiceResult }); }
             write(result.kind ? { type: 'result', route, ...lastServiceResult } : { type: 'error', message: 'The service search failed. Check the server console and provider keys.' });
           } else {
             write({ type: 'result', kind: 'unsupported', route, reason: routed.output?.reason || '' });

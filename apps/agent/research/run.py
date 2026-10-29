@@ -69,7 +69,8 @@ def main() -> None:
             return
         if payload.get("eventText"):
             from .event_flow import check_event
-            result = check_event(payload["eventText"], payload.get("cases"), emit=emit, find_only=bool(payload.get("findOnly")))
+            result = check_event(payload["eventText"], payload.get("cases"), emit=emit, find_only=bool(payload.get("findOnly")),
+                                 citywide=bool(payload.get("citywide")))
             print(json.dumps({"type": "result", **result}) if args.jsonl else json.dumps(result, indent=2), flush=True)
             return
         case, manual = payload["case"], bool(payload.get("manualTest"))

@@ -76,10 +76,11 @@ function makeCase(id, kind, state = 'removed', name = `Example ${id}`) {
 }
 const makeFeed = cases => ({ schemaVersion: 2, mode: 'live', generatedAt: '2026-10-28T10:00:00Z', coverage: { scope: 'retained_records_only', returned: cases.length, omitted: 0 }, cases });
 
-async function startApp(feed, { reporting, discovery, failInitial = false, failRefresh = false } = {}) {
+async function startApp(feed, { reporting, discovery, respond, failInitial = false, failRefresh = false } = {}) {
   const document = documentFromHtml(html); const requests = [];
   const fetch = async (url, options = {}) => {
-    requests.push({ url, method: options.method || 'GET' });
+    requests.push({ url, method: options.method || 'GET', headers: options.headers || {}, body: options.body });
+    if (respond) { const response = await respond(url, options); if (response) return response; }
     if ((url === '/api/cases' && failInitial) || (url === '/api/refresh' && failRefresh)) return { ok: false, status: 503, json: async () => ({ error: 'source_unavailable' }) };
     if (url.startsWith('/api/reporting?')) return { ok: true, json: async () => structuredClone(reporting) };
     if (url === '/api/discovery/findings' && discovery !== undefined) return { ok: true, json: async () => structuredClone(discovery) };
@@ -243,4 +244,53 @@ test('the review queue starts hidden for people seeking help and opens with Be a
   assert.equal(app.$('results').hidden, true);
   app.by('data-prompt', 'Show bad phone numbers').click();
   assert.equal(app.$('results').hidden, false);
+});
+
+test('research access stays in memory and authorizes research, decisions and One only on explicit actions', async () => {
+  const code = 'test_only_access_code_1234567890123456';
+  const app = await startApp(makeFeed([makeCase('access-a', 'website')]), { respond: async (url, options) => {
+    if (options.method !== 'POST') return;
+    if (url === '/api/route') return { ok: true, text: async () => JSON.stringify({ type: 'result', kind: 'unsupported' }) };
+    return { ok: true, json: async () => ({ subject: 'Test progress report' }) };
+  } });
+  const initialRequests = app.requests.length;
+  app.$('research-access-code').value = code;
+  app.$('research-access-form').dispatch('submit');
+  assert.equal(app.requests.length, initialRequests, 'entering a code must not execute research or send anything');
+  assert.equal(app.$('research-access-code').value, '');
+  assert.doesNotMatch(app.document.textContent, new RegExp(code));
+  app.$('search-input').value = 'Find help in Harlem';
+  app.$('search-form').dispatch('submit'); await flush();
+  app.$('case-detail').querySelectorAll('button').find(button => button.textContent === 'Mark resolved').click(); await flush();
+  app.$('report-email').value = 'reviewer@example.org';
+  app.$('report-form').dispatch('submit'); await flush();
+  for (const path of ['/api/route', '/api/review-actions', '/api/one/ghost-report']) {
+    const request = app.requests.find(request => request.url === path && request.method === 'POST');
+    assert.ok(request, path);
+    assert.equal(request.headers.Authorization, `Bearer ${code}`, path);
+    assert.ok(!request.url.includes(code) && !String(request.body).includes(code));
+  }
+  app.$('refresh-button').click(); await flush();
+  assert.ok(app.requests.filter(request => request.method === 'GET' || request.url === '/api/refresh').every(request => !request.headers.Authorization));
+  app.$('research-access-clear').click();
+  app.$('search-form').dispatch('submit'); await flush();
+  assert.equal(app.requests.filter(request => request.url === '/api/route').at(-1).headers.Authorization, undefined);
+  const reloaded = await startApp(makeFeed([makeCase('access-b', 'website')]));
+  assert.match(reloaded.$('research-access-status').textContent, /Enter your team's code/);
+});
+
+test('a rejected research access code opens a clear instruction and is discarded', async () => {
+  const app = await startApp(makeFeed([makeCase('locked-a', 'website')]), { respond: async (_url, options) => options.method === 'POST'
+    ? { ok: false, status: 401, json: async () => ({ error: 'maintainer_access_required' }) } : undefined });
+  app.$('research-access-code').value = 'invalid_code';
+  app.$('research-access-form').dispatch('submit');
+  assert.match(app.$('research-access-status').textContent, /32–256/);
+  app.$('research-access-code').value = 'synthetic_rejected_access_code_12345678';
+  app.$('research-access-form').dispatch('submit');
+  app.$('search-input').value = 'Find help in Harlem';
+  app.$('search-form').dispatch('submit'); await flush();
+  assert.equal(app.$('research-access').open, true);
+  assert.match(app.$('route-output').textContent, /enter the code shared by the maintainer/);
+  app.$('search-form').dispatch('submit'); await flush();
+  assert.equal(app.requests.filter(request => request.url === '/api/route').at(-1).headers.Authorization, undefined);
 });

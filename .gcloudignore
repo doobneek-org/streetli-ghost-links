@@ -1,0 +1,17 @@
+.gcloudignore
+.git/
+.github/
+#!include:.gitignore
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+data/
+exports/
+logs/
+*.pem
+*.key
+*credentials*.json
+**/.venv/
+**/__pycache__/
