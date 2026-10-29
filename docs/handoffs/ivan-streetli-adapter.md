@@ -2,6 +2,82 @@
 
 Newest entry first. Protocol: [README.md](README.md).
 
+## 2026-10-28 17:07 (PDT) · Hosted research, One routes and browser access
+
+**Branch:** `codex/streetli-adapter`, including Timothy's latest `ceffd4b` and
+our runtime/access changes. This continues Ivan's Claude `hackaton` session.
+
+**Works now:** Cloudflare at `you.doobneek.org` points to the deployed Node/Python
+service `projects/streetli/locations/us-east1/services/ghost-links-research`,
+origin `https://ghost-links-research-6konvjemca-ue.a.run.app`. The live feed has 187
+cases. You.com Search/Contents → CrewAI/Parasail completed a real one-case run:
+two searches, three freshly fetched pages, then verification. Its claim failed
+the evidence gate, so the saved verdict is **uncertain**, not a confirmed finding.
+No messages or reports were sent during this deployment.
+
+**Access:** the dashboard has **Research access**. Enter the separate team code;
+the browser keeps it only in memory, clears it on reload, and sends it only to
+same-origin API POSTs. Ivan's ignored `.env` holds its owner copy as
+`GHOST_LINKS_MAINTAINER_TOKEN`. It is distinct from provider/backend credentials.
+No code or key values belong in Git or this log.
+
+**One:** all six real paths are proxied, including `/api/one/team-ticket`, and
+the saved demo route `/api/route/cached` is now proxied. GET status is open;
+mutations require the team code. Live status: Gmail true; Sheets false until a
+target `GHOST_LINKS_SHEET_ID` is set; Discord/Twilio false. One CLI resolved Gmail
+and Sheets without executing actions. Connection metadata is a Secret Manager
+file mounted at `/app/one/one-actions.json`, selected by `ONE_ACTIONS_FILE`.
+The setup CLI now works on Windows too.
+
+**Secrets / project answer:** use **streetli**. The dedicated runtime is
+`ghost-links-research@streetli.iam.gserviceaccount.com`, with per-secret access.
+You.com, Parasail, One, backend credentials and the owner code are in Secret
+Manager under `ghost-links-*`; Cloudflare has separate Wrangler secrets.
+Only public Git-tracked source was uploaded for the image build.
+
+**Provider failures:** one live planner call failed while Parasail returned
+`429 Endpoint Busy`; an isolated repeat succeeded in 26 seconds. Rate limits and
+timeouts now show clear retry messages. Structured operator diagnostics contain
+only fixed categories/timing/exception classes, never prompts, responses or keys.
+The Python runner also handles a final JSON line without a newline and timeout
+exit races. There are no new automatic retries.
+
+**Persistence:** the hosted service uses a private hierarchical Cloud Storage
+bucket mounted at `/app/data`; findings/receipts/reviewer state/cache can survive
+restarts. Keep max instances at one: the JSON stores remain a single-writer
+design. The independent Firebase baseline continues its hourly refresh.
+
+**Validation:** 114 tests pass. Direct Cloud Run health/runtime, authenticated
+cases/One status and unauthenticated 401s pass. Local Wrangler serves the same
+frontend with the hosted backend at `http://127.0.0.1:4319/`, requiring the team
+code for mutations. Automated browser use is disabled by Work settings, and
+Cloudflare challenges command-line probes even with a browser user agent; do
+not claim a fresh browser visual check or weaken zone security for probes.
+
+**Final deployed versions:** Cloud Run revision `ghost-links-research-00002-lhq`
+from runtime commit `37a0722`, image digest
+`sha256:ae5efc8551384dea10d980a976a2ced6da9b27190642e8e6ef14210f85d1805e`.
+Cloudflare version `b50ff51b-778e-4d68-b455-a93db8e6c2ea`. A fresh request through
+the actual Worker runtime locally completed routing → planning → selection with
+two matches, then `/api/route/cached` returned the clearly marked saved result.
+Private storage retained the earlier finding across revisions. A temporary
+follow-up decision was saved, reread and cleared to verify mounted writes/renames.
+Four Python URL tests and Python compilation pass as well.
+
+**Submission:** [checklist](../submission-checklist.md) records the official
+6:25 PM Pacific deadline today and required 1–3 minute demo video, public repo,
+description, integration explanation and team details. AWS is optional. No form
+was submitted. The team still needs to record/link the video and submit.
+
+**Answers to Timothy:** your requested One paths and backend project are now
+handled, and your place-less search/headline update is included. Your source
+runtime stays the same code we deploy; `ONE_ACTIONS_FILE` and structured failure
+handling are the additional runtime changes.
+
+**Next:** the team can pull `main`, demo with the access code, record the video and
+finish the submission. [Submission draft](../submission-draft.md) and
+[walkthrough](../demo-script.md) are ready to adapt; no form has been submitted.
+
 ## 2026-10-29 01:50 (EDT) · Merged Timothy's branch; one test needed a machine it did not declare
 
 **Branch / commit:** `codex/streetli-adapter`, merging
