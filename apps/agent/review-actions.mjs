@@ -48,21 +48,3 @@ export function parseDecision(body) {
   const by = body?.by === undefined || body.by === '' ? '' : typeof body.by === 'string' && body.by.length <= 40 && /^[\p{L}\p{N} ._'-]+$/u.test(body.by) ? body.by.trim() : null;
   return caseId && decision && note !== null && by !== null ? { caseId, decision, note, by } : null;
 }
-
-// Leaderboard from current reviewer decisions. Points reward triage, most of all a
-// resolution; they count decisions recorded here, not verified external corrections.
-export const POINTS = { resolved: 10, not_an_issue: 3, follow_up: 1 };
-export function leaderboard(actions) {
-  const people = new Map();
-  for (const action of Object.values(actions || {})) {
-    const name = action?.by || 'Anonymous';
-    const entry = people.get(name) || { name, resolved: 0, notAnIssue: 0, followUp: 0, points: 0, lastAt: '' };
-    if (action.decision === 'resolved') entry.resolved++;
-    if (action.decision === 'not_an_issue') entry.notAnIssue++;
-    if (action.decision === 'follow_up') entry.followUp++;
-    entry.points += POINTS[action.decision] || 0;
-    if (String(action.at) > entry.lastAt) entry.lastAt = action.at;
-    people.set(name, entry);
-  }
-  return [...people.values()].sort((a, b) => b.points - a.points || b.resolved - a.resolved || a.name.localeCompare(b.name)).slice(0, 20);
-}

@@ -76,7 +76,8 @@ function makeCase(id, kind, state = 'removed', name = `Example ${id}`) {
 }
 const makeFeed = cases => ({ schemaVersion: 2, mode: 'live', generatedAt: '2026-10-28T10:00:00Z', coverage: { scope: 'retained_records_only', returned: cases.length, omitted: 0 }, cases });
 
-async function startApp(feed, { reporting, discovery, failInitial = false, failRefresh = false } = {}) {
+// Halloween mode is the site default; most tests check the normal wording, so they store 'off'.
+async function startApp(feed, { reporting, discovery, failInitial = false, failRefresh = false, stored = { 'ghost-links-halloween': 'off' } } = {}) {
   const document = documentFromHtml(html); const requests = [];
   const fetch = async (url, options = {}) => {
     requests.push({ url, method: options.method || 'GET' });
@@ -85,7 +86,8 @@ async function startApp(feed, { reporting, discovery, failInitial = false, failR
     if (url === '/api/discovery/findings' && discovery !== undefined) return { ok: true, json: async () => structuredClone(discovery) };
     return { ok: true, json: async () => structuredClone(feed) };
   };
-  vm.runInNewContext(script, { document, fetch, URL, AbortController, setTimeout, clearTimeout, window: { matchMedia: () => ({ matches: false }) } }, { filename: 'apps/web/app.js' });
+  const localStorage = { getItem: key => stored[key] ?? null, setItem: (key, value) => { stored[key] = String(value); } };
+  vm.runInNewContext(script, { document, fetch, URL, AbortController, setTimeout, clearTimeout, localStorage, window: { matchMedia: () => ({ matches: false }) } }, { filename: 'apps/web/app.js' });
   await flush();
   return { document, requests, $: id => document.getElementById(id), by: (attribute, value) => document.querySelectorAll(`[${attribute}="${value}"]`)[0] };
 }
@@ -243,4 +245,12 @@ test('the review queue starts hidden for people seeking help and opens with Be a
   assert.equal(app.$('results').hidden, true);
   app.by('data-prompt', 'Show bad phone numbers').click();
   assert.equal(app.$('results').hidden, false);
+});
+
+test('Halloween mode is on by default and a stored normal-mode choice is kept', async () => {
+  const fresh = await startApp(makeFeed([makeCase('site-a', 'website')]), { stored: {} });
+  assert.equal(fresh.$('halloween-toggle').textContent, '☀️ Normal mode');
+  assert.equal(fresh.$('halloween-toggle').getAttribute('aria-pressed'), 'true');
+  const normal = await startApp(makeFeed([makeCase('site-a', 'website')]));
+  assert.equal(normal.$('halloween-toggle').textContent, '🎃 Halloween mode');
 });

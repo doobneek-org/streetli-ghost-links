@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { validateCaseFeed } from '../../packages/contracts/cases.mjs';
 import { PUBLIC_CASES_URL } from '../../packages/contracts/case-source.mjs';
 import { createResearchRunner, manualTestCase } from './research-route.mjs';
-import { createReviewStore, leaderboard, parseDecision } from './review-actions.mjs';
+import { createReviewStore, parseDecision } from './review-actions.mjs';
 import { createDiscoveryRunner, runPython } from './discovery-runner.mjs';
 import { mkdir as mkdirCache, readFile as readCache, writeFile as writeCache } from 'node:fs/promises';
 import { eventRows, ghostReportEmail, gmailRaw, loadOneConfig, normalizePhone, oneStatus, runOneAction, serviceListEmail, serviceListSms, teamTicketText, validEmail } from './one-actions.mjs';
@@ -87,14 +87,15 @@ function startStream(response) {
   return line => { if (!response.writableEnded) response.write(`${JSON.stringify(line)}\n`); };
 }
 
-async function streamDiscovery(response, feed, options) {
-  const write = startStream(response);
-  const describe = event => event.type === 'plan' ? { step: 'plan', status: 'done', message: `${event.running} of ${event.due} due jobs running · ${event.eligible} eligible records · ${event.skipped?.freshCache || 0} fresh in cache` }
+const describeDiscovery = event => event.type === 'plan' ? { step: 'plan', status: 'done', message: `${event.running} of ${event.due} due jobs running · ${event.eligible} eligible records · ${event.skipped?.freshCache || 0} fresh in cache` }
     : event.type === 'job' ? { step: 'job', status: 'start', message: `Job ${event.index}/${event.total}: ${event.kind} used by ${event.caseIds.length} record(s)` }
     : event.type === 'job_done' ? { step: 'job', status: event.status === 'completed' ? 'done' : 'error', message: `Job ${event.index} ${event.status}: ${event.findings.map(f => f.verdict).join(', ') || 'no findings'}` }
     : event;
+
+async function streamDiscovery(response, feed, options) {
+  const write = startStream(response);
   try {
-    const result = await options.discovery.runDue(feed, { ...options, onEvent: event => write({ type: 'event', ...describe(event) }) });
+    const result = await options.discovery.runDue(feed, { ...options, onEvent: event => write({ type: 'event', ...describeDiscovery(event) }) });
     write({ type: 'result', kind: 'discovery', ...result });
   } catch (error) {
     write({ type: 'error', message: error.code === 'research_busy' ? 'Another research run is in progress.' : 'Discovery failed. Check the server console and provider keys.' });
@@ -282,6 +283,25 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
             const eligible = lastFeed.mode === 'live' ? (await discovery.plan(lastFeed, { maxJobs: 100 })).eligibleCaseIds : [];
             const { answerRequest } = await import('./ask.mjs');
             const result = await answerRequest(text, lastFeed, { runStage: (stage, input) => python({ stage, input }), eligibleCaseIds: eligible, onEvent });
+            // Ask goes on to check the shortlist: is each old identifier still shown by a third
+            // party, and what is the official way to report it. Fresh cached findings are reused.
+            const shortlist = result.selection?.caseIds || [];
+            if (!result.error && shortlist.length && lastFeed.mode === 'live') {
+              const due = shortlist.filter(id => eligible.includes(id));
+              if (due.length) {
+                onEvent({ step: 'research', status: 'start', message: `Checking where ${due.length} old identifier(s) are still listed (You.com + Parasail)` });
+                try { await discovery.runDue(lastFeed, { maxJobs: 3, onlyCaseIds: due, onEvent: event => onEvent(describeDiscovery(event)) }); }
+                catch (error) { onEvent({ step: 'research', status: 'error', message: error.code === 'research_busy' ? 'Another research run is in progress; showing saved findings.' : 'Research failed; showing saved findings.' }); }
+              }
+              const findings = await discovery.findings(lastFeed);
+              const { buildReportingPlan } = await import('./reporting-routes.mjs');
+              result.checked = await Promise.all(shortlist.map(async id => {
+                const item = lastFeed.cases.find(candidate => candidate.id === id);
+                const plan = item ? await buildReportingPlan(item).catch(() => null) : null;
+                return { caseId: id, finding: findings[id] || null, routes: (plan?.routes || []).slice(0, 4).map(({ title, url }) => ({ title, url })) };
+              }));
+              onEvent({ step: 'research', status: 'done', message: `${result.checked.filter(entry => entry.finding?.verdict === 'stale_reference').length} of ${shortlist.length} still listed by a third party` });
+            }
             if (!result.error) await saveRouteCache(text, { kind: 'ask', route, ...result });
             write(result.error ? { type: 'error', message: 'The request could not be interpreted. Try rephrasing it.' } : { type: 'result', kind: 'ask', route, ...result });
           } else if (route === 'event' || route === 'find_services') {
@@ -332,7 +352,7 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
               lastFeed = lastFeed || validateCaseFeed(await getCases());
               const decisions = await reviews.list(lastFeed.mode);
               const findings = lastFeed.mode === 'live' ? await discovery.findings(lastFeed) : {};
-              message = ghostReportEmail({ leaderboard: leaderboard(decisions), decisions, findings, mode: lastFeed.mode });
+              message = ghostReportEmail({ decisions, findings, mode: lastFeed.mode });
             }
             lastOneAction = Date.now();
             // One's own "Send Email" action takes fields; Gmail's raw send endpoint takes an RFC 822 message.
@@ -383,7 +403,7 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
       if (path === '/api/review-actions' && request.method === 'GET') {
         const feedNow = lastFeed || validateCaseFeed(await getCases());
         const actions = await reviews.list(feedNow.mode);
-        return send(200, { mode: feedNow.mode, actions, leaderboard: leaderboard(actions), one: oneStatus(await oneConfig(), oneEnv) });
+        return send(200, { mode: feedNow.mode, actions, one: oneStatus(await oneConfig(), oneEnv) });
       }
       if (path === '/api/review-actions' && request.method === 'POST') {
         const decision = parseDecision(await readJsonBody(request));
@@ -391,7 +411,7 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
         const feedNow = lastFeed || validateCaseFeed(await getCases());
         if (!feedNow.cases.some(item => item.id === decision.caseId)) return send(404, { error: 'case_not_found' });
         const action = await reviews.set(feedNow.mode, decision.caseId, decision.decision, decision.note, decision.by);
-        return send(200, { caseId: decision.caseId, action, leaderboard: leaderboard(await reviews.list(feedNow.mode)) });
+        return send(200, { caseId: decision.caseId, action });
       }
       // Event check: which services near an event can still help, from public sources.
       if (path === '/api/event-check' && request.method === 'POST') {

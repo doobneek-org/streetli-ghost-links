@@ -53,7 +53,7 @@ export async function answerRequest(request, feed, { runStage, eligibleCaseIds =
   if (!planned.output) return { error: 'request_not_understood' };
   const plan = cleanPlan(planned.output);
   const matches = applyPlan(feed.cases, plan);
-  onEvent({ step: 'plan', status: 'done', message: `${matches.length} records match: ${plan.explanation}` });
+  onEvent({ step: 'plan', status: 'done', message: `${matches.length} records match${plan.serviceTerms.length ? ` (names with ${plan.serviceTerms.slice(0, 4).map(term => `“${term}”`).join(', ')})` : ''}: ${plan.explanation}` });
   const result = { plan, matchedIds: matches.slice(0, 2000).map(item => item.id), matched: matches.length, selection: null, placeholderPrompts: ['plan-request'] };
   if (!matches.length) return result;
 

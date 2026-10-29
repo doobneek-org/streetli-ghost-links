@@ -98,16 +98,15 @@ export function serviceListSms({ services, area }) {
   return [head, ...lines, tail].join('\n');
 }
 
-export function ghostReportEmail({ leaderboard = [], decisions = {}, findings = {}, mode }) {
+export function ghostReportEmail({ decisions = {}, findings = {}, mode }) {
   const values = Object.values(decisions);
   const count = decision => values.filter(action => action.decision === decision).length;
   const haunting = Object.values(findings).filter(finding => finding.verdict === 'stale_reference').length;
-  const top = leaderboard.slice(0, 5).map((entry, index) => `${index + 1}. ${clip(entry.name, 40)}: ${entry.points} pts (${entry.resolved} busted)`);
   return {
     subject: `Ghost Links report: ${count('resolved')} busted, ${haunting} still haunting`,
     text: [`Ghost Links report (${mode} data)`, '',
       `Busted (resolved by reviewers): ${count('resolved')}`, `False alarms: ${count('not_an_issue')}`, `Keep watching: ${count('follow_up')}`,
-      `Links still shown online (discovery): ${haunting}`, '', 'Top ghost busters:', ...(top.length ? top : ['No decisions yet.']), '',
+      `Links still shown online (discovery): ${haunting}`, '',
       'Counts are reviewer decisions recorded in Ghost Links, not verified external corrections.'].join('\n')
   };
 }
