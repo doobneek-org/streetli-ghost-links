@@ -52,7 +52,11 @@ Return `caseId`, `verdict`, `evidence`, `missingEvidence`, and `summary`.
 Each evidence item is `{ documentId, quote, role }`; roles are
 `current_association`, `identity`, `contradiction`, `historical_context`, or
 `current_correction`. Every quote must be an exact substring of the cited
-document text, at most 400 characters. Do not cite unavailable pages or snippets
+document text, between 8 and 400 characters. Copy the raw supplied text exactly,
+including Markdown links and whitespace. Do not replace a Markdown link with its
+display text, merge separated passages, or insert ellipses. If you cannot copy a
+valid exact quote, omit that evidence item and state what evidence is missing.
+Do not cite unavailable pages or snippets
 as proof of a verified finding. For `uncertain`, list missing evidence clearly.
 
 The runtime rejects invented quotes/IDs and requires fresh fetched evidence.

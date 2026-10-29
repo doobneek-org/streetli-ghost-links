@@ -98,3 +98,16 @@ AWS is optional in the event guide. No database or public hosting vendor is
 prescribed for The Open Haunt. Reuse the existing backend and host the interface
 on the owner's site when deployment is configured; keep sponsor credentials on
 the server.
+
+## Rejected model outputs
+
+A fetched page is not a completed verification by itself. If a model quote is
+not present verbatim in the supplied page, the claim is rejected and the job
+uses the planner's error backoff (initially five minutes). It does not enter the
+24-hour successful-result cache. No automatic paid retry runs when reading the
+dashboard; a reviewer can request research after the backoff.
+
+If the same source binding already has validated evidence under 24 hours old,
+a later failed attempt keeps that evidence and its original observation time.
+The failed attempt is shown separately. Expired evidence and evidence for a
+different source binding are never kept as current findings.

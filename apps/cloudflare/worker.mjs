@@ -6,6 +6,7 @@ import { buildDiscoveryPlan } from '../../packages/contracts/discovery-plan.mjs'
 import { buildReportingPlan } from '../agent/reporting-routes.mjs';
 import { buildLocationDetailUrl, projectLocationDetail } from '../../packages/contracts/location-detail.mjs';
 import { projectGoogleMapsMatch } from '../../packages/contracts/google-maps-match.mjs';
+import { randomBytes } from 'node:crypto';
 
 const MAX_LOCATION_BYTES = 8 * 1024 * 1024;
 const MAX_FEED_BYTES = 16 * 1024 * 1024;
@@ -26,10 +27,10 @@ const NO_REDIRECT = 'manual';
 const redirected = response => response.status >= 300 && response.status < 400;
 const token = value => typeof value === 'string' && /^[A-Za-z0-9_-]{32,256}$/.test(value);
 
-function headers(api = true) {
+function headers(api = true, nonce = null) {
   const result = new Headers({
     'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
-    'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+    'Content-Security-Policy': `default-src 'self'; script-src 'self'${nonce ? ` 'nonce-${nonce}'` : ''}; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`,
   });
   if (api) result.set('Cache-Control', 'no-store');
   return result;
@@ -167,7 +168,12 @@ export function createCloudflareWorker({ fetchImpl = fetch, now = Date.now, repo
         if (!environment.ASSETS?.fetch) return json({ error: 'assets_unavailable' }, 503);
         const response = await environment.ASSETS.fetch(request);
         const responseHeaders = new Headers(response.headers);
-        for (const [key, value] of headers(false)) responseHeaders.set(key, value);
+        // Cloudflare adds its own same-origin detection bootstrap after this
+        // response. It reads CSP nonces and applies them to that injected script.
+        // Each HTML response gets a fresh nonce; arbitrary inline scripts remain blocked.
+        const html = /^text\/html(?:;|$)/i.test(response.headers.get('Content-Type') || '');
+        for (const [key, value] of headers(false, html ? randomBytes(18).toString('base64') : null)) responseHeaders.set(key, value);
+        if (html) responseHeaders.set('Cache-Control', 'private, no-store');
         return new Response(response.body, { status: response.status, statusText: response.statusText, headers: responseHeaders });
       }
       if (request.method === 'POST' && ((request.headers.get('Origin') && request.headers.get('Origin') !== url.origin)

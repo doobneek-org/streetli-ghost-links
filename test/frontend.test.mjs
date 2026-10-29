@@ -76,7 +76,7 @@ function makeCase(id, kind, state = 'removed', name = `Example ${id}`) {
 }
 const makeFeed = cases => ({ schemaVersion: 2, mode: 'live', generatedAt: '2026-10-28T10:00:00Z', coverage: { scope: 'retained_records_only', returned: cases.length, omitted: 0 }, cases });
 
-async function startApp(feed, { reporting, discovery, respond, href, failInitial = false, failRefresh = false } = {}) {
+async function startApp(feed, { reporting, discovery, respond, href, sessionStorage, failInitial = false, failRefresh = false } = {}) {
   const document = documentFromHtml(html); const requests = [];
   const fetch = async (url, options = {}) => {
     requests.push({ url, method: options.method || 'GET', headers: options.headers || {}, body: options.body });
@@ -86,7 +86,7 @@ async function startApp(feed, { reporting, discovery, respond, href, failInitial
     if (url === '/api/discovery/findings' && discovery !== undefined) return { ok: true, json: async () => structuredClone(discovery) };
     return { ok: true, json: async () => structuredClone(feed) };
   };
-  vm.runInNewContext(script, { document, fetch, URL, AbortController, setTimeout, clearTimeout, window: { matchMedia: () => ({ matches: false }), location: { href: href || 'https://you.doobneek.org/' } } }, { filename: 'apps/web/app.js' });
+  vm.runInNewContext(script, { document, fetch, URL, AbortController, setTimeout, clearTimeout, window: { matchMedia: () => ({ matches: false }), location: { href: href || 'https://you.doobneek.org/' }, sessionStorage } }, { filename: 'apps/web/app.js' });
   await flush();
   return { document, requests, $: id => document.getElementById(id), by: (attribute, value) => document.querySelectorAll(`[${attribute}="${value}"]`)[0] };
 }
@@ -275,7 +275,7 @@ test('the review queue starts hidden for people seeking help and opens with Be a
   assert.equal(app.$('results').hidden, false);
 });
 
-test('research access stays in memory and authorizes research, decisions and One only on explicit actions', async () => {
+test('research access works without session storage and authorizes research, decisions and One only on explicit actions', async () => {
   const code = 'test_only_access_code_1234567890123456';
   const app = await startApp(makeFeed([makeCase('access-a', 'website')]), { respond: async (url, options) => {
     if (options.method !== 'POST') return;
@@ -308,6 +308,76 @@ test('research access stays in memory and authorizes research, decisions and One
   assert.match(reloaded.$('research-access-status').textContent, /Enter your team's code/);
 });
 
+const accessStorage = initial => {
+  const values = new Map(Object.entries(initial || {}));
+  return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key) };
+};
+const accessKey = 'ghost-links-research-access';
+
+test('tab session access survives reload and authorizes the exact case research query without leaking the code', async () => {
+  const code = 'synthetic_tab_session_access_1234567890';
+  const sessionStorage = accessStorage();
+  const item = { ...makeCase('session-a', 'phone'), reviewState: 'approved_for_research' };
+  const feed = makeFeed([item]);
+  const respond = async (url, options) => options.method === 'POST' && url.startsWith('/api/research?')
+    ? { ok: true, text: async () => JSON.stringify({ type: 'result', kind: 'discovery', plan: { ran: 0 }, findings: [] }) } : undefined;
+  const original = await startApp(feed, { sessionStorage, respond });
+  const initialRequests = original.requests.length;
+  original.$('research-access-code').value = code;
+  original.$('research-access-form').dispatch('submit');
+  assert.equal(sessionStorage.getItem(accessKey), code);
+  assert.match(original.$('research-access-status').textContent, /including reloads/);
+  assert.equal(original.requests.length, initialRequests, 'saving access never starts an action');
+
+  const reloaded = await startApp(feed, { sessionStorage, respond });
+  assert.match(reloaded.$('research-access-status').textContent, /restored/);
+  assert.equal(reloaded.requests.filter(request => request.method === 'POST').length, 0);
+  reloaded.$('case-detail').querySelectorAll('.research-button')[0].click(); await flush();
+  const research = reloaded.requests.find(request => request.url === '/api/research?caseId=session-a');
+  assert.ok(research);
+  assert.equal(research.headers.Authorization, `Bearer ${code}`);
+  assert.equal(research.method, 'POST');
+  assert.ok(!research.url.includes(code) && !research.body.includes(code));
+  assert.equal(reloaded.$('research-access-code').value, '');
+  assert.doesNotMatch(reloaded.document.textContent, new RegExp(code));
+  assert.ok(reloaded.requests.filter(request => request.method === 'GET').every(request => !request.headers.Authorization));
+  reloaded.$('research-access-clear').click();
+  assert.equal(sessionStorage.getItem(accessKey), null);
+  reloaded.$('case-detail').querySelectorAll('.research-button')[0].click(); await flush();
+  assert.equal(reloaded.requests.filter(request => request.url === '/api/research?caseId=session-a').at(-1).headers.Authorization, undefined);
+});
+
+test('a server 401 clears tab access even when its payload does not name the maintainer gate', async () => {
+  const sessionStorage = accessStorage({ [accessKey]: 'synthetic_rejected_session_code_123456789' });
+  const app = await startApp(makeFeed([makeCase('expired-session', 'phone')]), { sessionStorage,
+    respond: async (_url, options) => options.method === 'POST'
+      ? { ok: false, status: 401, json: async () => ({ error: 'unauthorized' }) } : undefined });
+  app.$('search-input').value = 'Show removed phones';
+  app.$('search-form').dispatch('submit'); await flush();
+  assert.equal(sessionStorage.getItem(accessKey), null);
+  assert.equal(app.$('research-access').open, true);
+  assert.match(app.$('route-output').textContent, /enter the code shared by the maintainer/);
+  app.$('search-form').dispatch('submit'); await flush();
+  assert.equal(app.requests.filter(request => request.url === '/api/route').at(-1).headers.Authorization, undefined);
+});
+
+test('invalid or blocked tab storage cannot authorize requests and storage failure preserves explicit in-memory access', async () => {
+  const invalid = accessStorage({ [accessKey]: '<script>not an access code</script>' });
+  const app = await startApp(makeFeed([makeCase('bad-session', 'phone')]), { sessionStorage: invalid });
+  assert.equal(invalid.getItem(accessKey), null);
+  assert.match(app.$('research-access-status').textContent, /Enter your team's code/);
+  const blocked = { getItem() { throw Error('blocked'); }, setItem() { throw Error('blocked'); }, removeItem() { throw Error('blocked'); } };
+  const fallback = await startApp(makeFeed([makeCase('blocked-session', 'phone')]), { sessionStorage: blocked });
+  fallback.$('research-access-code').value = 'synthetic_memory_fallback_code_123456789';
+  fallback.$('research-access-form').dispatch('submit');
+  assert.match(fallback.$('research-access-status').textContent, /storage is unavailable/);
+  fallback.$('search-input').value = 'Show removed phones';
+  fallback.$('search-form').dispatch('submit'); await flush();
+  assert.equal(fallback.requests.find(request => request.url === '/api/route').headers.Authorization, 'Bearer synthetic_memory_fallback_code_123456789');
+  fallback.$('research-access-clear').click();
+  assert.match(fallback.$('research-access-status').textContent, /cleared/);
+});
+
 test('a rejected research access code opens a clear instruction and is discarded', async () => {
   const app = await startApp(makeFeed([makeCase('locked-a', 'website')]), { respond: async (_url, options) => options.method === 'POST'
     ? { ok: false, status: 401, json: async () => ({ error: 'maintainer_access_required' }) } : undefined });
@@ -322,4 +392,36 @@ test('a rejected research access code opens a clear instruction and is discarded
   assert.match(app.$('route-output').textContent, /enter the code shared by the maintainer/);
   app.$('search-form').dispatch('submit'); await flush();
   assert.equal(app.requests.filter(request => request.url === '/api/route').at(-1).headers.Authorization, undefined);
+});
+
+test('a rejected latest quote keeps the earlier evidence date and shows a separate attempt notice', async () => {
+  const item = makeCase('preserved-quote', 'phone');
+  const previous = '2026-10-27T10:00:00Z', attempted = '2026-10-28T11:00:00Z';
+  const finding = { caseId: item.id, verdict: 'uncertain', gate: 'passed', checkedAt: previous, pages: 1,
+    summary: 'An earlier validated page lists this identifier; the current correct number is unknown.',
+    evidence: [{ quote: 'Fictional Pantry phone 212-555-0123', role: 'current_association', url: 'https://public.provider.example/listing' }],
+    missingEvidence: ['A verified current replacement number.'],
+    lastAttempt: { checkedAt: attempted, gate: 'rejected:unbound_quote', keptPrevious: true } };
+  const app = await startApp(makeFeed([item]), { discovery: { mode: 'live', eligibleCaseIds: [item.id], findings: { [item.id]: finding } } });
+  const format = value => new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+  const detail = app.$('case-detail');
+  const metadata = detail.querySelectorAll('.evidence-meta').find(node => node.textContent.startsWith('Checked '));
+  assert.ok(metadata.textContent.includes(format(previous)), 'evidence keeps its original checkedAt');
+  assert.ok(!metadata.textContent.includes(format(attempted)), 'failed attempt must not refresh evidence age');
+  const notice = detail.querySelectorAll('.research-note').find(node => node.textContent.startsWith('Latest attempt '));
+  assert.ok(notice.textContent.includes(format(attempted)));
+  assert.match(notice.textContent, /could not verify a quote\. Showing the earlier validated evidence/);
+  assert.match(detail.textContent, /Fictional Pantry phone 212-555-0123/);
+  assert.doesNotMatch(detail.textContent, /unbound_quote|No claim was kept/);
+});
+
+test('an unbound quote failure uses a plain explanation and keeps no rejected quote', async () => {
+  const item = makeCase('rejected-quote', 'phone');
+  const app = await startApp(makeFeed([item]), { discovery: { mode: 'live', eligibleCaseIds: [item.id], findings: {
+    [item.id]: { caseId: item.id, verdict: 'uncertain', gate: 'rejected:unbound_quote', checkedAt: '2026-10-28T11:00:00Z', pages: 1,
+      summary: 'The model output failed the evidence gate and was discarded.', evidence: [], missingEvidence: [] }
+  } } });
+  assert.match(app.$('case-detail').textContent, /A model quote did not exactly match the fetched page\. No claim was kept\./);
+  assert.doesNotMatch(app.$('case-detail').textContent, /unbound_quote|Showing the earlier validated evidence/);
+  assert.equal(app.$('case-detail').querySelectorAll('blockquote').length, 0);
 });
