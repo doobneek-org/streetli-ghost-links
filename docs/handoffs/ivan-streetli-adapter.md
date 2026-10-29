@@ -34,8 +34,11 @@ returns 401 without the code and reaches the backend's 404 for an unknown case
 with it, without starting research. Existing phone demo evidence remains
 gate-passed/uncertain with three citations dated `2026-10-29T00:37:21Z`.
 
-**Deployment:** Cloudflare version `a548350d-ba41-4294-bdbd-2d7cac7a4612` is active;
-the matching Cloud Run image is being built for the research/cache changes.
+**Deployment:** Cloudflare version `a548350d-ba41-4294-bdbd-2d7cac7a4612` and Cloud
+Run revision `ghost-links-research-00003-6mc` are active. The runtime image digest
+is `sha256:c3863937b1397f26bb694f104cb74eb4fdae25acb19810695b1bb5d10888ba26`.
+Read-only checks against the live persistent state confirm an old rejected
+result is due for retry while the phone's accepted evidence remains cached.
 **Shared files:** Worker, `apps/web/app.js`/`index.html`, discovery runner,
 `research/stages.py`, prompt and targeted tests. No messages/reports were sent.
 
