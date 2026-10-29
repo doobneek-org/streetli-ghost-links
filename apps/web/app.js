@@ -61,6 +61,11 @@
   let busy = false;
   let loadFailed = false;
   const reportingPlans = new Map();
+  let linkedCaseId = null;
+  try {
+    const id = new URL(window.location?.href || 'https://invalid.example/').searchParams.get('caseId');
+    if (/^[A-Za-z0-9_-]{1,200}$/.test(id || '')) linkedCaseId = id;
+  } catch { /* A malformed browser URL does not affect ordinary case browsing. */ }
 
   // ---- Halloween mode: spooky colors and wording. Evidence, quotes and safety notes stay plain. ----
   let spooky = false;
@@ -954,6 +959,20 @@
       }
       const content = make('div', 'reporting-plan');
       if (plan.summary) content.append(make('p', 'report-summary', plan.summary));
+      if (plan.googleMaps) {
+        const saved = plan.googleMaps;
+        const maps = make('section', 'registrar-info');
+        maps.append(make('div', 'eyebrow', 'Saved Google Maps match'), make('h4', 'registrar-name', saved.name || 'Matched place'));
+        if (saved.address) maps.append(make('p', 'registrar-domain', saved.address));
+        if (saved.listedValue) maps.append(make('p', 'registrar-notice', `Saved Google ${labels[saved.kind] || 'contact'}: ${saved.listedValue}`));
+        if (saved.observedAt) maps.append(make('p', 'registrar-checked', `Observed ${checkedTime(saved.observedAt)}`));
+        maps.append(make('p', 'registrar-notice', saved.freshness === 'stale'
+          ? 'This older saved observation may have changed. Recheck the current Maps listing before suggesting an edit.'
+          : 'This is precomputed evidence, not a new check of Maps. Confirm the current listing before suggesting an edit.'));
+        const listing = externalAnchor('Open matched Google Maps listing ↗', saved.url);
+        if (listing) maps.append(listing);
+        content.append(maps);
+      }
       if (item.identifier.kind === 'website') {
         const registration = plan.registration;
         const registrar = make('section', 'registrar-info');
@@ -1017,6 +1036,15 @@
       feed = payload;
       items = payload.cases.filter(item => item?.id && item?.organization && item?.identifier && item?.internal);
       if (!stateChosen && payload.schemaVersion === 2 && payload.mode === 'live' && items.some(item => ['removed', 'replaced'].includes(item.internal.state))) activeState = 'removed';
+      if (linkedCaseId) {
+        const linked = items.find(item => item.id === linkedCaseId);
+        if (linked) {
+          selectedId = linked.id; activeState = 'all'; stateChosen = true;
+          query = linked.identifier.value; elements.input.value = query;
+          setQueueOpen(true);
+        }
+        linkedCaseId = null;
+      }
       reportingPlans.clear();
       renderSource();
       loadDecisions();

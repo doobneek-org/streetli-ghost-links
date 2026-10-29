@@ -58,6 +58,60 @@ test('reporting is restricted to actual cases and never accepts arbitrary URLs',
   assert.equal((await worker.fetch(request(`/api/reporting?caseId=${selected}&caseId=${selected}`))).status, 400);
 });
 
+test('reporting reads a bounded precomputed Maps match for the selected case without forwarding credentials', async () => {
+  const feed = live(); feed.schemaVersion = 2;
+  for (const [index, item] of feed.cases.entries()) {
+    item.internal.flaggedAt = item.internal.correctedAt;
+    item.location = { id: `location-${index}`, url: `https://gogetta.nyc/team/location/location-${index}/questions/website` };
+  }
+  feed.coverage = { scope: 'retained_records_only', sourceCounts: { website: feed.cases.length, phone: 0, email: 0 }, returned: feed.cases.length, omitted: 0 };
+  const selected = feed.cases[0];
+  const match = { locationId: selected.location.id, ...selected.identifier, placeId: 'ChIJ_SYNTHETIC_1234',
+    name: 'Example Community Pantry', address: '123 Example Street', listedValue: selected.identifier.value,
+    observedAt: '2026-10-28T18:00:00Z', freshness: 'fresh', provenance: 'saved_google_places_match', privateHistory: 'DO_NOT_EXPOSE' };
+  const calls = [];
+  let clock = Date.parse('2026-10-28T20:00:00Z');
+  const worker = createCloudflareWorker({ now: () => clock, fetchImpl: async (url, options) => {
+    calls.push({ url: String(url), options });
+    return String(url) === PUBLIC_CASES_URL ? json(feed) : json({ caseId: selected.id, googleMapsMatch: match });
+  }, reporting: async (item, options) => ({ caseId: item.id, googleMaps: options.googleMapsMatch, routes: [] }) });
+  const response = await worker.fetch(request(`/api/reporting?caseId=${selected.id}`, { headers: { Authorization: 'PRIVATE_CALLER', Cookie: 'PRIVATE_COOKIE' } }));
+  assert.equal(response.status, 200);
+  const text = await response.text(); const result = JSON.parse(text);
+  assert.equal(new URL(result.googleMaps.url).searchParams.get('query_place_id'), match.placeId);
+  assert.doesNotMatch(text, /DO_NOT_EXPOSE|PRIVATE_/);
+  const lookup = calls[1];
+  assert.equal(lookup.url, `${PUBLIC_CASES_URL}?mapsCaseId=${selected.id}`);
+  assert.deepEqual(lookup.options.headers, { Accept: 'application/json' });
+  assert.equal(lookup.options.redirect, 'manual'); assert.ok(lookup.options.signal);
+  await worker.fetch(request(`/api/reporting?caseId=${selected.id}`)); assert.equal(calls.length, 2);
+  clock += 61000; await worker.fetch(request(`/api/reporting?caseId=${selected.id}`)); assert.equal(calls.length, 4);
+  const before = calls.length;
+  assert.equal((await worker.fetch(request('/api/reporting?caseId=missing'))).status, 404);
+  assert.equal((await worker.fetch(request(`/api/reporting?caseId=${selected.id}&mapsCaseId=arbitrary`))).status, 400);
+  assert.equal(calls.length, before);
+});
+
+test('unavailable, oversized, redirected or mismatched saved Maps observations fall back to general guidance', async () => {
+  const feed = live(); feed.schemaVersion = 2;
+  for (const [index, item] of feed.cases.entries()) {
+    item.internal.flaggedAt = item.internal.correctedAt;
+    item.location = { id: `location-${index}`, url: `https://gogetta.nyc/team/location/location-${index}/questions/website` };
+  }
+  feed.coverage = { scope: 'retained_records_only', sourceCounts: { website: feed.cases.length, phone: 0, email: 0 }, returned: feed.cases.length, omitted: 0 };
+  for (const failure of [() => { throw new Error('PRIVATE'); }, () => new Response('PRIVATE', { status: 500 }),
+    () => new Response('PRIVATE', { status: 302, headers: { Location: 'https://evil.example/' } }),
+    () => new Response('PRIVATE', { headers: { 'content-length': '17000' } }),
+    () => json({ caseId: 'another-case', googleMapsMatch: { private: 'PRIVATE' } }),
+    () => new Response('not json')]) {
+    const worker = createCloudflareWorker({ fetchImpl: async url => String(url) === PUBLIC_CASES_URL ? json(feed) : failure(),
+      reporting: async (item, options) => ({ caseId: item.id, googleMaps: options.googleMapsMatch, routes: ['generic guidance'] }) });
+    const response = await worker.fetch(request(`/api/reporting?caseId=${feed.cases[0].id}`));
+    assert.equal(response.status, 200); const text = await response.text();
+    assert.doesNotMatch(text, /PRIVATE|evil\.example/); assert.equal(JSON.parse(text).googleMaps, null);
+  }
+});
+
 test('missing Python backend is truthful and never fabricates research or successful saved decisions', async () => {
   const worker = createCloudflareWorker({ fetchImpl: async () => json(live()) });
   const health = await (await worker.fetch(request('/health'))).json();

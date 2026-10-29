@@ -2,6 +2,31 @@
 
 Newest entry first. Protocol: [README.md](README.md).
 
+## 2026-10-28 17:43 (PDT) · Exact Maps listing from existing precomputation
+
+**Branch:** `codex/streetli-adapter`, following `740f82a`.
+**Works now:** reporting reads the saved Google Maps match through a narrow
+public projection. A bound match replaces the generic Google help link with the
+exact place ID URL and shows its saved contact value, observation date and
+fresh/stale recheck notice. Opening a case via `?caseId=...` selects it and opens
+the review queue without running research, fetching reporting or sending.
+**Private boundary:** the existing Streetli case function accepts `mapsCaseId`
+for a known public case only. It reads existing Maps caches and the current
+branch context, rechecks identity and exact contact, then strips private fields.
+It does not call Places, submit reports, change source records or hand over
+private extension code. Historical removals remain usable as dated evidence.
+**Changed shared files:** `apps/agent/reporting-routes.mjs`,
+`apps/cloudflare/worker.mjs`, `apps/web/app.js`; new public match validator and
+targeted tests. Case feed schema remains unchanged. See
+[Maps integration](../google-maps-matches.md).
+**Validation:** 122 public tests and 14 private reader/HTTP tests pass. A real
+saved Google observation passes the new reader. A bounded live research run also
+saved current directory citations; its verdict stays uncertain because a
+verified current replacement was not supplied. No external reports were sent.
+**Pending:** Timothy's broader Ask-shortlist/Halloween backend integration stays
+separate from this reporting enhancement. Generic guidance remains when the
+existing Maps cache has no eligible match; this is not full Maps coverage.
+
 ## 2026-10-28 17:29 (PDT) · Independent scrolling for long record details
 
 **Branch:** `codex/streetli-adapter`, following `0716e57`.
