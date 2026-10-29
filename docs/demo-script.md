@@ -12,10 +12,13 @@ Keep any saved result's timestamp and **Saved result** label visible.
 
 ### 0:00–0:30 — The problem
 
-“A nonprofit fixes its phone number or removes an old website, but other
-directories keep sending people to the bad contact. Ghost Links starts with
-Streetli's existing correction history and flags, then checks where those old
-identifiers still appear.”
+“There's a fire in your apartment building tonight. You're on the sidewalk with
+your kids, and you can't go back in. You search for an emergency shelter and call
+the first number: disconnected. The next one's website is a casino ad. When services
+change their contacts, the old copies keep haunting Google Maps, directories and AI
+answers, and nobody owns them. Streetli's live NYC data has 187 of these flagged
+right now. Ghost Links starts from those flags and checks where the old contacts
+still appear.”
 
 Open **Be a hero** to show the live review queue. Explain that a historical flag
 is a starting point for investigation, not proof of current wrongdoing.
@@ -83,30 +86,47 @@ the criterion it earns.
 
 ### Script
 
-#### 0:00 · The problem (impact)
+#### 0:00 · The problem (impact, about 40 seconds)
 
-> "When a food pantry changes its phone number, the old one doesn't die. It keeps haunting
-> Google listings, directories and old flyers. Someone in crisis calls a dead number, or
-> worse, visits a website that's been taken over by a scammer. Streetli maintains NYC's
-> community-service data, and it already knows which contacts failed. Ghost Links finds
-> where those ghosts still live online, and helps people find help that's actually there."
+> "Imagine there's a fire in your apartment building tonight. Everyone gets out, but you're
+> standing on the sidewalk with your kids, and you can't go back in. You search 'emergency
+> shelter near me' and call the first number. **Disconnected.** You try the next one's
+> website. **It's a casino ad.**
+>
+> That's not a glitch. When a shelter or pantry changes its phone number or lets a website
+> lapse, it updates its own listing, but the old copies don't die. They keep living on Google
+> Maps, in directories, in old PDFs, even in AI answers. Nobody owns those copies, so nobody
+> fixes them.
+>
+> And some get worse. Expired domains get bought up and turned into spam or scams, still
+> sitting on listings that say 'Emergency Shelter.'
+>
+> Right now, Streetli's live NYC data has **187 flagged contacts**: phones that don't
+> connect, emails that bounce, and **17 websites that may have been taken over**. Every one
+> is a possible dead end for a family that's already lost everything that night.
+>
+> Streetli fixes its own records. **Ghost Links goes after the copies**, and helps people
+> find help that's still there."
 
-#### 0:20 · Someone needs help after an event (innovation, UX, technical)
+Say "may have been taken over": those 17 are flags, not confirmed findings. The 187 and 17
+are the live feed's counts on Oct 28; check the dashboard before presenting.
 
-Type **`There was a flood on the Upper West Side`** and press **Ask**.
+#### 0:40 · That family, tonight (innovation, UX, technical)
+
+Type **`Impacted by a fire in SoHo`** and press **Ask**, then say: "So let's be that family."
 
 > "One box, no menus. Parasail, coordinated by CrewAI, decides what I meant. This is an
 > event, so it works out what someone affected needs: emergency shelter, disaster relief,
 > clothing."
 
-Point to: the progress steps, the **Official protectors** cards (official disaster help) (Red Cross Greater NY,
-NYC Emergency Management), and the list sorted **closest first** with miles.
+Point to: the progress steps, the **Official protectors** cards (official disaster help:
+American Red Cross Greater NY, FDNY), and the list sorted **closest first** with miles.
 
 > "You.com searches and reads each service's own pages for closure notices. Official help is
 > only shown if the name, quote and phone appear word for word on a page we fetched. No
 > hallucinated hotlines."
 
-#### 1:00 · Take it with you (One)
+#### 1:15 · Take it with you (One)
 
 Type an address and click **📧 Send this list to my inbox** ("Email me this list" in normal mode). Switch to the
 inbox tab and show the email.
@@ -114,7 +134,7 @@ inbox tab and show the email.
 > "One sends it through Gmail, on a click, with the content built on the server from what we
 > found. Nothing is ever sent without a person pressing the button."
 
-#### 1:20 · The maintainer side: hunting the ghosts (technical, impact)
+#### 1:30 · The maintainer side: hunting the ghosts (technical, impact)
 
 Click **👻 Become a ghost buster** ("Be a hero: fix outdated listings" in normal mode). Point to the categories: possible compromise,
 broken websites, bad phones, bad emails.
@@ -131,14 +151,11 @@ Click **Busted 👻 (resolved)**.
 
 > "Reviewers record what they found. It never edits Streetli on its own."
 
-#### 2:15 · Ask in plain English (UX)
+Optional if time allows: type **`I want to check for record fixes needed by food banks`**
+and press **Ask**. "Same box. Now it's a records question: Parasail filters to the food-bank
+records that need a second look and picks the top ones to research first."
 
-Type **`I want to check for record fixes needed by food banks`** and press **Ask**.
-
-> "Same box. Now it's a records question, so Parasail turns it into a filter: 13 food-bank
-> records that need a second look, with the top ones picked to research first."
-
-#### 2:35 · Normal mode, and the close (presentation)
+#### 2:30 · Normal mode, and the close (presentation)
 
 Click **☀️ Normal mode**.
 
@@ -147,7 +164,7 @@ Click **☀️ Normal mode**.
 
 > "All three partners are load-bearing. Without You.com there's no evidence, without
 > Parasail and CrewAI nothing interprets it, and without One nothing reaches anyone. It runs
-> on Streetli's live NYC data, keys stay server-side, and 98 tests run without a single paid
+> on Streetli's live NYC data, keys stay server-side, and 116 tests run without a single paid
 > call."
 
 ### Likely questions
