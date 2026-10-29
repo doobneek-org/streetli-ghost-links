@@ -2,6 +2,19 @@
 
 Newest entry first. Protocol: [README.md](README.md).
 
+## 2026-10-28 17:19 (PDT) · Frontend release from merged main
+
+**Branch / source:** `codex/streetli-adapter` @ `05db5e8`, matching `origin/main`.
+**Works now:** redeployed the Worker and static frontend to `you.doobneek.org`.
+Wrangler confirms 100% traffic on version `525fe5f1-3259-464a-87c7-8170ead312d2`,
+created `2026-10-29T00:18:54Z`. The latest assets were already uploaded; this
+release uses them with the configured Cloud Run backend. No source code changed.
+**Verification:** deployment listing confirms the active version. Six browser
+assets contain the latest headline, inline Streetli panel and Research access;
+no secret files are in the asset directory. Public automated requests still get
+Cloudflare's `403` challenge, so this release does not claim a fresh visual check.
+**Needs from Timothy:** nothing for this release; pull merged `main` normally.
+
 ## 2026-10-28 17:07 (PDT) · Hosted research, One routes and browser access
 
 **Branch:** `codex/streetli-adapter`, including Timothy's latest `ceffd4b` and
