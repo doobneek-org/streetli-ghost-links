@@ -48,7 +48,7 @@ does not guarantee removal and the app has not filed a report.
 Show Gmail through One. The presenter may deliberately send the progress report
 to their own inbox, or show connected status without sending. Do not claim a
 send happened if you only showed the button. Sheets needs a target spreadsheet;
-Twilio and Discord require their own connected accounts.
+Discord requires its own connected account.
 
 ### 2:45–3:00 — What we built
 
@@ -162,5 +162,5 @@ Click **☀️ Normal mode**.
 
 ### Don't demo
 
-- Text me this list, Google Sheets log, Discord ticket: built, but not connected for the event.
+- Google Sheets log, Discord ticket: built, but not connected for the event.
 - Mocked progress. If a live run is too slow, show a saved result with its timestamp and say so.

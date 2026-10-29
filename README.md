@@ -37,7 +37,7 @@ ghost hunting.
 | **You.com** | Search and Contents: find pages still showing an old contact; find services near an event; read their closure notices | No evidence, no services |
 | **Parasail** | Every judgment: routing the request, planning filters, verifying evidence with exact quotes, reading notices, deciding what an affected person needs | Nothing interprets the evidence |
 | **CrewAI** | Flows and agents coordinating search → fetch → match → verify → draft, with real progress events and routing on results | No bounded, routed pipeline |
-| **One** | On a click: Gmail "email me this list" and progress report (live). Built and gated on setup: SMS "text me this list" (Twilio), Google Sheets action list, Discord review ticket | Findings stay on screen; nothing reaches anyone |
+| **One** | On a click: Gmail "email me this list" and progress report (live). Built and gated on setup: Google Sheets action list, Discord review ticket | Findings stay on screen; nothing reaches anyone |
 
 Safety by design: findings are cited leads, not accusations; every quote must appear verbatim on
 a freshly fetched page; generic scan flags are never shown as compromise; nothing is sent, edited
