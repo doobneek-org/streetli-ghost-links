@@ -1,4 +1,5 @@
 import { isIP } from 'node:net';
+import { projectGoogleMapsMatch } from '../../packages/contracts/google-maps-match.mjs';
 
 const BOOTSTRAP = 'https://data.iana.org/rdap/dns.json';
 const LOOKUP = 'https://lookup.icann.org/';
@@ -150,16 +151,25 @@ export const lookupDomainRegistration = createDomainRegistrationLookup();
 
 const route = (title, url, scope, steps, requirements) => ({ title, url, steps, scope, requirements });
 
-export async function buildReportingPlan(caseRecord, { lookupRegistration = lookupDomainRegistration } = {}) {
+export async function buildReportingPlan(caseRecord, { lookupRegistration = lookupDomainRegistration, googleMapsMatch = null, now = Date.now() } = {}) {
   const kind = ['website', 'email', 'phone'].includes(caseRecord?.identifier?.kind) ? caseRecord.identifier.kind : 'unsupported';
   const caseId = clean(caseRecord?.id, 200);
   if (kind === 'unsupported') return { caseId, kind, summary: 'Unsupported identifier: review the case before choosing a reporting route.', routes: [], registration: null };
+  const googleMaps = projectGoogleMapsMatch(googleMapsMatch, caseRecord, { now });
   const requirements = ['Confirm the exact organization and branch; an internal removal is not proof that a public listing is still wrong.', 'Open and check the current listing. Include its URL, observation time and evidence; search snippets alone are leads.', 'Use a verified replacement when available. A reviewer chooses whether to submit; no report has been sent.'];
   const routes = [
     route('Correct Google Maps / business listing', 'https://support.google.com/maps/answer/7084895?hl=en', 'listing_correction', ['Open the matching place in Google Maps and choose Suggest an edit.', `Correct the ${kind === 'website' ? 'website' : kind === 'phone' ? 'phone number' : 'relevant contact information, or use listing feedback when email is not an editable field'}. Keep the real organization listed.`, 'Attach supporting current evidence and save the submission status for follow-up.'], requirements),
     route('Request a Findhelp directory correction', 'https://company.findhelp.com/about/contact/', 'listing_correction', ['Find and verify the affected program listing and branch.', 'Use Findhelp support/contact to send the exact program URL and the outdated field; authorized program staff can manage their claimed listing.', 'Request a correction or removal of the stale identifier and track the response.'], requirements),
     route('Correct other directories and AI citations at the source', 'https://support.google.com/websearch/answer/6223687?hl=en', 'listing_correction', ['Open each cited source and verify that it currently repeats the old identifier for this organization and branch.', 'Use that directory operator’s own correction/contact route; do not send a request to the retired phone or email.', 'For an AI answer, use the product’s feedback control and provide the corrected source. Fixing Streetli does not automatically update a directory or AI answer.'], requirements),
   ];
+  if (googleMaps) {
+    routes[0] = route('Open saved matching Google Maps listing', googleMaps.url, 'listing_correction',
+      ['Open this saved place match and confirm its name and address still identify the same organization and branch.',
+        `Compare the current ${kind === 'website' ? 'website' : kind === 'phone' ? 'phone number' : 'contact information'} with the historical identifier and supporting evidence. Choose Suggest an edit only if the current listing needs correction.`,
+        'Google controls its editing options and review outcome. Opening this link does not submit an edit.'],
+      [`This is a saved Google Places observation from ${googleMaps.observedAt}, not a new check of the current Maps page.`,
+        ...(googleMaps.freshness === 'stale' ? ['The saved observation is older or marked stale; recheck the listing before reporting anything.'] : []), ...requirements]);
+  }
   let registration = null;
   if (kind === 'website') {
     routes.push(route('Report supported Google Search spam', 'https://search.google.com/search-console/report-spam', 'search_report', ['Identify the exact current Search result and affected page URL.', 'Choose the supported issue, such as expired-domain ranking abuse, hacked pages or deceptive redirects; describe observable evidence.', 'Use ordinary Search feedback for inaccurate results. If the source changed or disappeared, consider Refresh Outdated Content instead.'], ['Repurposing or gambling content alone does not prove search spam, phishing or malware.', 'Google reviews reports and controls the outcome; no removal or completion is guaranteed.', 'Do not include private notes or personally identifying information in a spam report.']));
@@ -184,5 +194,5 @@ export async function buildReportingPlan(caseRecord, { lookupRegistration = look
       routes.push(route(title, url, 'domain_abuse', ['Prioritize correcting directory links that still associate the old domain with the provider.', 'Review the current registrar’s abuse policy. Supply the exact URL, timestamp, redirect evidence and the specific supported policy violation.', 'Identify the hosting provider separately if content removal is needed; this lookup does not establish a host.', 'Keep any report as a draft until reviewed; record the recipient response before any escalation.'], ['A changed or expired domain reused for gambling is not by itself proof of DNS abuse.', 'Support phishing, malware, botnets, pharming or another applicable provider-policy violation with evidence; do not assert it from an old internal verdict.', 'Registrar control concerns domain registration; a host may control page content. Nameservers do not prove hosting.', 'No takedown is promised, and no external report has been submitted.']));
     }
   }
-  return { caseId, kind, summary: 'Prepare corrections for stale public references; internal removal, current external evidence, submission and verified correction are separate states.', routes, registration };
+  return { caseId, kind, summary: 'Prepare corrections for stale public references; internal removal, current external evidence, submission and verified correction are separate states.', routes, registration, googleMaps };
 }

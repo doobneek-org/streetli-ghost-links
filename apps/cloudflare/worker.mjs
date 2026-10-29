@@ -5,10 +5,12 @@ import { validateCaseFeed } from '../../packages/contracts/cases.mjs';
 import { buildDiscoveryPlan } from '../../packages/contracts/discovery-plan.mjs';
 import { buildReportingPlan } from '../agent/reporting-routes.mjs';
 import { buildLocationDetailUrl, projectLocationDetail } from '../../packages/contracts/location-detail.mjs';
+import { projectGoogleMapsMatch } from '../../packages/contracts/google-maps-match.mjs';
 
 const MAX_LOCATION_BYTES = 8 * 1024 * 1024;
 const MAX_FEED_BYTES = 16 * 1024 * 1024;
 const MAX_REQUEST_BYTES = 4096;
+const MAX_MAPS_MATCH_BYTES = 16 * 1024;
 const routes = new Map([
   ['/api/review-actions', ['GET', 'POST']], ['/api/discovery/findings', ['GET']],
   ['/api/discovery/run', ['POST']], ['/api/research', ['POST']],
@@ -79,6 +81,7 @@ function validCaseQuery(url) {
 
 export function createCloudflareWorker({ fetchImpl = fetch, now = Date.now, reporting = buildReportingPlan, ttlMs = 60000 } = {}) {
   let cached = null, loadedAt = 0, pending = null, lastRefreshAt = -Infinity;
+  const mapsMatches = new Map();
   async function getCases({ refresh = false } = {}) {
     if (!refresh && cached && now() >= loadedAt && now() - loadedAt < ttlMs) return cached;
     if (pending) return pending;
@@ -111,6 +114,25 @@ export function createCloudflareWorker({ fetchImpl = fetch, now = Date.now, repo
     try { detail = projectLocationDetail(JSON.parse(body)); } catch { throw safeError('location_source_invalid_response', 502); }
     if (!detail) throw safeError('location_source_invalid_response', 502);
     return { caseId: item.id, detail };
+  }
+  async function googleMapsMatch(item) {
+    if (!item.location?.id) return null;
+    const binding = JSON.stringify([item.location.id, item.identifier]);
+    const prior = mapsMatches.get(item.id);
+    if (prior?.binding === binding && now() >= prior.at && now() - prior.at < 60000) return prior.match;
+    let match = null;
+    try {
+      const target = new URL(PUBLIC_CASES_URL);
+      target.searchParams.set('mapsCaseId', item.id);
+      const response = await fetchImpl(target, { headers: { Accept: 'application/json' }, redirect: NO_REDIRECT, signal: AbortSignal.timeout(10000) });
+      if (response.ok && !redirected(response) && Number(response.headers.get('content-length')) <= MAX_MAPS_MATCH_BYTES) {
+        const payload = JSON.parse(await boundedText(response.body, MAX_MAPS_MATCH_BYTES, 'maps_match_too_large'));
+        if (payload.caseId === item.id) match = projectGoogleMapsMatch(payload.googleMapsMatch, item, { now: now() });
+      }
+    } catch { /* A missing or malformed saved match must not prevent general reporting guidance. */ }
+    if (mapsMatches.size >= 1000 && !mapsMatches.has(item.id)) mapsMatches.delete(mapsMatches.keys().next().value);
+    mapsMatches.set(item.id, { binding, match, at: now() });
+    return match;
   }
   async function proxy(request, url, environment, backend) {
     if (request.method === 'POST') {
@@ -169,7 +191,7 @@ export function createCloudflareWorker({ fetchImpl = fetch, now = Date.now, repo
           const id = validCaseQuery(url);
           if (!id) return json({ error: 'invalid_case_request' }, 400);
           const selected = (await getCases()).cases.find(item => item.id === id);
-          return selected ? json(await reporting(selected)) : json({ error: 'case_not_found' }, 404);
+          return selected ? json(await reporting(selected, { googleMapsMatch: await googleMapsMatch(selected), now: now() })) : json({ error: 'case_not_found' }, 404);
         }
         if (url.pathname === '/api/location' && request.method === 'GET') {
           const id = validCaseQuery(url);

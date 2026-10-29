@@ -76,7 +76,7 @@ function makeCase(id, kind, state = 'removed', name = `Example ${id}`) {
 }
 const makeFeed = cases => ({ schemaVersion: 2, mode: 'live', generatedAt: '2026-10-28T10:00:00Z', coverage: { scope: 'retained_records_only', returned: cases.length, omitted: 0 }, cases });
 
-async function startApp(feed, { reporting, discovery, respond, failInitial = false, failRefresh = false } = {}) {
+async function startApp(feed, { reporting, discovery, respond, href, failInitial = false, failRefresh = false } = {}) {
   const document = documentFromHtml(html); const requests = [];
   const fetch = async (url, options = {}) => {
     requests.push({ url, method: options.method || 'GET', headers: options.headers || {}, body: options.body });
@@ -86,7 +86,7 @@ async function startApp(feed, { reporting, discovery, respond, failInitial = fal
     if (url === '/api/discovery/findings' && discovery !== undefined) return { ok: true, json: async () => structuredClone(discovery) };
     return { ok: true, json: async () => structuredClone(feed) };
   };
-  vm.runInNewContext(script, { document, fetch, URL, AbortController, setTimeout, clearTimeout, window: { matchMedia: () => ({ matches: false }) } }, { filename: 'apps/web/app.js' });
+  vm.runInNewContext(script, { document, fetch, URL, AbortController, setTimeout, clearTimeout, window: { matchMedia: () => ({ matches: false }), location: { href: href || 'https://you.doobneek.org/' } } }, { filename: 'apps/web/app.js' });
   await flush();
   return { document, requests, $: id => document.getElementById(id), by: (attribute, value) => document.querySelectorAll(`[${attribute}="${value}"]`)[0] };
 }
@@ -142,6 +142,35 @@ test('reporting is fetched on a click and renders registrar plus safe recipient 
   assert.ok(links.some(anchor => anchor.href === 'mailto:abuse@registrar.example'));
   assert.ok(links.every(anchor => !anchor.href?.startsWith('javascript:')));
   assert.equal(app.document.querySelectorAll('img').length, 0);
+});
+
+test('a saved Google Maps match shows its exact listing, saved value and observation uncertainty', async () => {
+  const item = makeCase('phone-map', 'phone');
+  const url = 'https://www.google.com/maps/search/?api=1&query=Example+Pantry&query_place_id=ChIJ_SYNTHETIC_1234';
+  const app = await startApp(makeFeed([item]), { reporting: { caseId: item.id, kind: 'phone', registration: null, routes: [],
+    googleMaps: { name: 'Example Pantry', address: '123 Example Street', kind: 'phone', listedValue: '(212) 555-0123', observedAt: '2026-10-01T18:00:00Z', freshness: 'stale', url } } });
+  app.$('case-detail').querySelectorAll('.report-toggle')[0].click(); await flush();
+  assert.match(app.$('case-detail').textContent, /Saved Google Maps match/);
+  assert.match(app.$('case-detail').textContent, /Saved Google Phone number: \(212\) 555-0123/);
+  assert.match(app.$('case-detail').textContent, /older saved observation may have changed/);
+  assert.match(app.$('case-detail').textContent, /Observed /);
+  assert.ok(app.$('case-detail').querySelectorAll('a').some(anchor => anchor.href === url));
+  assert.equal(app.requests.filter(request => request.url.startsWith('/api/reporting')).length, 1);
+  assert.ok(app.requests.every(request => request.method === 'GET'));
+});
+
+test('a case deep link opens the exact saved record without triggering research or sending actions', async () => {
+  const cases = Array.from({ length: 65 }, (_, index) => makeCase(`linked-${index}`, 'website', index === 60 ? 'flagged' : 'removed'));
+  const app = await startApp(makeFeed(cases), { href: 'https://you.doobneek.org/?caseId=linked-60' });
+  assert.equal(app.$('results').hidden, false);
+  assert.match(app.$('case-detail').textContent, /Example linked-60/);
+  assert.equal(app.$('search-input').value, cases[60].identifier.value);
+  assert.equal(app.$('record-list').children.length, 1);
+  assert.ok(app.requests.every(request => request.method === 'GET'));
+  assert.ok(app.requests.every(request => !/research|\/route|\/reporting|\/one\//.test(request.url)));
+  const unknown = await startApp(makeFeed(cases), { href: 'https://you.doobneek.org/?caseId=not-present' });
+  assert.equal(unknown.$('results').hidden, true);
+  assert.match(unknown.$('case-detail').textContent, /Example linked-0/);
 });
 
 test('fixture mode permits local review without remote research or registrar lookup', async () => {
