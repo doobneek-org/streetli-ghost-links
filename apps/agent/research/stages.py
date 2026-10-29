@@ -28,7 +28,7 @@ class Selection(BaseModel):
 
 class Evidence(BaseModel):
     documentId: str
-    quote: str = Field(description="Exact substring of the cited document text, 8-400 characters")
+    quote: str = Field(min_length=8, max_length=400, description="Copy an exact 8-400 character substring from the cited document text, preserving Markdown, punctuation and whitespace; never paraphrase or add ellipses")
     role: Literal["current_association", "identity", "contradiction", "historical_context", "current_correction"]
 
 

@@ -2,6 +2,46 @@
 
 Newest entry first. Protocol: [README.md](README.md).
 
+## 2026-10-28 18:04 (PDT) · Reload-safe access, Cloudflare CSP and rejected quote retries
+
+**Branch / runtime commit:** `codex/streetli-adapter` @ `3b70669`.
+**Fixed:** Research access was deliberately memory-only, so reloads dropped the
+code and the next `/api/research?caseId=...` returned 401. Access now uses guarded
+tab-scoped `sessionStorage`, with in-memory fallback when blocked. Explicit Clear
+access and any server 401 remove it. Provider keys remain server-only; request
+URLs/bodies and visible page text never contain the code. Query-path auth has a
+dedicated regression test.
+
+**CSP:** the frontend has no inline scripts. Cloudflare's injected JavaScript
+Detections bootstrap needs a nonce under strict CSP, per its official docs. HTML
+now gets a fresh nonce in its response policy and `private, no-store`; same-origin
+external scripts still work and neither `unsafe-inline` nor `unsafe-eval` is
+enabled. JSON and JavaScript responses do not get a nonce.
+
+**Evidence:** exact source-substring validation is unchanged. Rejected, missing
+or failed verifications now get error backoff (initially five minutes), rather
+than the 24-hour successful cache. A still-fresh, same-binding validated result
+survives a later failed attempt with its original date/quotes; a separate latest
+attempt notice explains the failure. Changed/expired evidence is not retained.
+Legacy failed results are made retryable only in planner input, without writes
+or automatic provider calls. The prompt and model schema now explicitly require
+8–400 character raw-text quotes, preserving Markdown and whitespace.
+
+**Validation:** 132 Node tests, four Python URL tests and compilation pass. Actual
+local Workers runtime returns HTML with the nonce, no unsafe-inline, correct
+cache headers and the session-storage frontend. Real research-query auth check
+returns 401 without the code and reaches the backend's 404 for an unknown case
+with it, without starting research. Existing phone demo evidence remains
+gate-passed/uncertain with three citations dated `2026-10-29T00:37:21Z`.
+
+**Deployment:** Cloudflare version `a548350d-ba41-4294-bdbd-2d7cac7a4612` and Cloud
+Run revision `ghost-links-research-00003-6mc` are active. The runtime image digest
+is `sha256:c3863937b1397f26bb694f104cb74eb4fdae25acb19810695b1bb5d10888ba26`.
+Read-only checks against the live persistent state confirm an old rejected
+result is due for retry while the phone's accepted evidence remains cached.
+**Shared files:** Worker, `apps/web/app.js`/`index.html`, discovery runner,
+`research/stages.py`, prompt and targeted tests. No messages/reports were sent.
+
 ## 2026-10-28 17:43 (PDT) · Exact Maps listing from existing precomputation
 
 **Branch:** `codex/streetli-adapter`, following `740f82a`.

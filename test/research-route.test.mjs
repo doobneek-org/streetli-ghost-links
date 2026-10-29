@@ -5,7 +5,7 @@ import { createFixtureServer } from '../apps/agent/fixture-server.mjs';
 import { createResearchRunner, manualTestCase } from '../apps/agent/research-route.mjs';
 import { createDiscoveryRunner } from '../apps/agent/discovery-runner.mjs';
 import { applyPlan, cleanPlan, categoryOf } from '../apps/agent/ask.mjs';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -95,14 +95,132 @@ test('live research runs the planner job for eligible cases only, and streams ND
   assert.equal(receipts[0].status, 'completed');
 });
 
-test('discovery discards outputs that fail the evidence gate and respects the cache', async () => {
-  const invented = payload => { const outcome = uncertainOutcome(payload); outcome.verifications[0].output.evidence[0].quote = 'a quote that is not on the page'; return outcome; };
-  const { calls, discovery } = await fakeDiscovery(invented);
+test('rejected discovery outputs use short error backoff rather than a successful 24-hour cache', async () => {
+  let clock = new Date('2026-10-28T20:00:00Z'), rejected = true;
+  const dataDir = `${await mkdtemp(join(tmpdir(), 'ghost-rejected-'))}/`, calls = [], events = [];
+  const discovery = createDiscoveryRunner({ dataDir, available: () => true, now: () => clock, run: async payload => {
+    calls.push(payload);
+    const outcome = { ...uncertainOutcome(payload), checkedAt: clock.toISOString() };
+    outcome.documents[0].observedAt = clock.toISOString();
+    if (rejected) outcome.verifications[0].output.evidence[0].quote = 'a quote that is not on the page';
+    return outcome;
+  } });
   const feed = structuredClone(liveFeed);
-  const first = await discovery.runDue(feed, { maxJobs: 3 });
+  const first = await discovery.runDue(feed, { maxJobs: 3, onEvent: event => events.push(event) });
   assert.match(first.findings[0].gate, /^rejected:unbound_quote/); assert.equal(first.findings[0].evidence.length, 0);
+  assert.match(first.findings[0].summary, /not found verbatim.*retry after the short backoff/);
+  assert.doesNotMatch(JSON.stringify(first), /a quote that is not on the page/);
+  assert.equal(events.find(event => event.type === 'job_done').status, 'error');
+  let receipts = JSON.parse(await readFile(`${dataDir}discovery-results.json`, 'utf8'));
+  assert.equal(receipts[0].status, 'error'); assert.equal(receipts[0].attempts, 1);
   const second = await discovery.runDue(feed, { maxJobs: 3 });
   assert.equal(second.plan.ran, 0); assert.equal(calls.length, 1);
+  assert.equal(second.plan.skipped.retryBackoff, 1); assert.equal(second.plan.skipped.freshCache, 0);
+  clock = new Date('2026-10-28T20:06:00Z'); rejected = false;
+  const retry = await discovery.runDue(feed, { maxJobs: 3 });
+  assert.equal(retry.plan.ran, 1); assert.equal(calls.length, 2);
+  assert.ok(retry.findings.every(finding => finding.gate === 'passed'));
+  receipts = JSON.parse(await readFile(`${dataDir}discovery-results.json`, 'utf8'));
+  assert.equal(receipts[0].status, 'completed');
+  assert.equal((await discovery.runDue(feed, { maxJobs: 3 })).plan.skipped.freshCache, 1);
+});
+
+test('a later rejection or model error preserves fresh bound evidence without advancing its check time', async () => {
+  let clock = new Date('2026-10-28T20:00:00Z'), attempt = 0;
+  const dataDir = `${await mkdtemp(join(tmpdir(), 'ghost-preserve-'))}/`;
+  const discovery = createDiscoveryRunner({ dataDir, available: () => true, now: () => clock, run: async payload => {
+    attempt++;
+    if (attempt === 3) return { status: 'error', error: 'runtime_unavailable' };
+    const outcome = { ...uncertainOutcome(payload), checkedAt: clock.toISOString() };
+    outcome.documents[0].observedAt = clock.toISOString();
+    const index = attempt === 1 ? 1 : 0;
+    outcome.verifications[index].output.evidence[0].quote = 'fabricated text must never be stored';
+    return outcome;
+  } });
+  const feed = structuredClone(liveFeed);
+  const first = await discovery.runDue(feed, { maxJobs: 1 });
+  const original = first.findings[0]; assert.equal(original.gate, 'passed');
+  clock = new Date('2026-10-28T20:06:00Z');
+  const second = await discovery.runDue(feed, { maxJobs: 1 });
+  const kept = second.findings.find(finding => finding.caseId === original.caseId);
+  assert.equal(kept.gate, 'passed'); assert.equal(kept.checkedAt, original.checkedAt);
+  assert.deepEqual(kept.evidence, original.evidence);
+  assert.deepEqual(kept.lastAttempt, { checkedAt: '2026-10-28T20:06:00Z', gate: 'rejected:unbound_quote', keptPrevious: true });
+  assert.doesNotMatch(JSON.stringify(second), /fabricated text must never be stored/);
+  clock = new Date('2026-10-28T20:17:00Z');
+  const failed = await discovery.runDue(feed, { maxJobs: 1 });
+  assert.ok(failed.findings.every(finding => finding.gate === 'passed' && finding.lastAttempt.gate === 'model_failed'));
+  assert.equal(failed.findings[0].checkedAt, original.checkedAt);
+  assert.equal((await discovery.findings(feed))[original.caseId].checkedAt, original.checkedAt);
+  const receipts = JSON.parse(await readFile(`${dataDir}discovery-results.json`, 'utf8'));
+  assert.equal(receipts[0].status, 'error'); assert.equal(receipts[0].attempts, 3);
+});
+
+test('a rejected run never carries prior evidence across a changed binding or past its original 24-hour expiry', async () => {
+  for (const change of ['binding', 'age']) {
+    let clock = new Date('2026-10-28T20:00:00Z'), fail = false;
+    const dataDir = `${await mkdtemp(join(tmpdir(), 'ghost-expire-'))}/`;
+    const discovery = createDiscoveryRunner({ dataDir, available: () => true, now: () => clock, run: async payload => {
+      const outcome = { ...uncertainOutcome(payload), checkedAt: clock.toISOString() };
+      outcome.documents[0].observedAt = clock.toISOString();
+      if (fail) for (const verification of outcome.verifications) verification.output.evidence[0].quote = 'invented quote';
+      return outcome;
+    } });
+    const feed = structuredClone(liveFeed);
+    const first = await discovery.runDue(feed, { maxJobs: 1 }); assert.equal(first.findings[0].gate, 'passed');
+    fail = true;
+    if (change === 'binding') { feed.cases[0].organization.name = 'A different branch identity'; clock = new Date('2026-10-28T20:06:00Z'); }
+    else clock = new Date('2026-10-29T21:00:00Z');
+    const result = await discovery.runDue(feed, { maxJobs: 1 });
+    assert.ok(result.findings.every(finding => finding.gate === 'rejected:unbound_quote' && finding.evidence.length === 0));
+    assert.ok(result.findings.every(finding => !finding.lastAttempt && finding.checkedAt === clock.toISOString()));
+  }
+});
+
+test('empty, missing, duplicate or failed per-case verifications cannot create completed receipts', async () => {
+  for (const shape of ['empty', 'missing', 'duplicate', 'model_error']) {
+    const dataDir = `${await mkdtemp(join(tmpdir(), 'ghost-empty-'))}/`;
+    const discovery = createDiscoveryRunner({ dataDir, available: () => true, run: async payload => {
+      const outcome = uncertainOutcome(payload);
+      if (shape === 'empty') outcome.verifications = [];
+      if (shape === 'missing') outcome.verifications.pop();
+      if (shape === 'duplicate') outcome.verifications.push(outcome.verifications[0]);
+      if (shape === 'model_error') outcome.verifications[0] = { caseId: payload.discoveryJob.caseIds[0], error: 'RateLimitError' };
+      return outcome;
+    } });
+    const result = await discovery.runDue(structuredClone(liveFeed), { maxJobs: 1 });
+    assert.ok(result.findings.some(finding => finding.gate === 'model_failed'));
+    const receipts = JSON.parse(await readFile(`${dataDir}discovery-results.json`, 'utf8'));
+    assert.equal(receipts[0].status, 'error', shape);
+  }
+});
+
+test('legacy completed receipts with rejected or missing current findings use the original attempt backoff without rewriting data', async () => {
+  let clock = new Date('2026-10-28T20:00:00Z'), calls = 0;
+  const dataDir = `${await mkdtemp(join(tmpdir(), 'ghost-legacy-'))}/`;
+  const discovery = createDiscoveryRunner({ dataDir, available: () => true, now: () => clock, run: async payload => {
+    calls++;
+    const outcome = { ...uncertainOutcome(payload), checkedAt: clock.toISOString() };
+    outcome.documents[0].observedAt = clock.toISOString();
+    outcome.verifications[0].output.evidence[0].quote = 'a rejected invented quote';
+    return outcome;
+  } });
+  const feed = structuredClone(liveFeed);
+  await discovery.runDue(feed, { maxJobs: 1 });
+  const original = JSON.parse(await readFile(`${dataDir}discovery-results.json`, 'utf8'));
+  const legacy = JSON.stringify(original.map(({ binding, checkedAt }) => ({ binding, checkedAt, status: 'completed' })));
+  await writeFile(`${dataDir}discovery-results.json`, legacy);
+  clock = new Date('2026-10-28T20:01:00Z');
+  const deferred = await discovery.plan(feed, { maxJobs: 1 });
+  assert.equal(deferred.jobs.length, 0); assert.equal(deferred.skipped.retryBackoff, 1); assert.equal(deferred.skipped.freshCache, 0);
+  clock = new Date('2026-10-28T20:06:00Z');
+  const due = await discovery.plan(feed, { maxJobs: 1 });
+  assert.equal(due.jobs.length, 1); assert.equal(calls, 1, 'planning never starts a paid retry');
+  assert.equal(await readFile(`${dataDir}discovery-results.json`, 'utf8'), legacy, 'planner reads preserve the old receipt');
+  const saved = JSON.parse(await readFile(`${dataDir}discovery-findings.json`, 'utf8'));
+  delete saved[feed.cases[0].id];
+  await writeFile(`${dataDir}discovery-findings.json`, JSON.stringify(saved));
+  assert.equal((await discovery.plan(feed, { maxJobs: 1 })).jobs.length, 1, 'a missing verification is not completed evidence');
 });
 
 test('a selected case after the global 100-job cap still runs with its full identifier group', async () => {

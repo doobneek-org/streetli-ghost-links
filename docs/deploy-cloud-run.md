@@ -77,7 +77,8 @@ on the Worker reports `researchBackendConfigured: true`.
 
 Configure `MAINTAINER_TOKEN` on the Worker separately. Open **Research access** on
 the dashboard and enter the team access code before using research, reviewer or
-One actions. The browser keeps it in memory, clears it on reload, and never sends
+One actions. The browser keeps it in tab-scoped session storage across reloads,
+clears it on **Clear access**, tab close or an authentication rejection, and never sends
 the provider keys. The owner's ignored `.env` can keep a copy named
 `GHOST_LINKS_MAINTAINER_TOKEN`; the backend token is a different credential.
 

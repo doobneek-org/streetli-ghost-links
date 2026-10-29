@@ -3,16 +3,28 @@
 
   const $ = id => document.getElementById(id);
   // A maintainer access code is a scoped browser credential, never a provider key.
-  // Keep it in memory only and attach it solely to this app's same-origin API paths.
+  // Persist only for this browser tab, including reloads; never use localStorage.
+  const researchAccessKey = 'ghost-links-research-access';
+  const validAccessCode = value => typeof value === 'string' && /^[A-Za-z0-9_-]{32,256}$/.test(value);
   let researchAccessCode = '';
+  try {
+    const stored = window.sessionStorage?.getItem(researchAccessKey);
+    if (validAccessCode(stored)) researchAccessCode = stored;
+    else if (stored != null) window.sessionStorage.removeItem(researchAccessKey);
+  } catch { /* Storage may be blocked; this tab can still keep access in memory. */ }
+  const clearResearchAccess = () => {
+    researchAccessCode = '';
+    try { window.sessionStorage?.removeItem(researchAccessKey); } catch { /* optional */ }
+  };
   const accessHeaders = (url, headers) => ({ ...headers, ...(researchAccessCode
     && /^\/api\/[a-z0-9/_-]+(?:\?[^#\\\r\n]*)?$/i.test(url) ? { Authorization: `Bearer ${researchAccessCode}` } : {}) });
-  const accessError = code => {
+  const accessError = (code, status) => {
+    if (status === 401) code = 'maintainer_access_required';
     if (code !== 'maintainer_access_required' && code !== 'maintainer_access_not_configured') return null;
     const message = code === 'maintainer_access_required'
       ? 'Research access is required. Open Research access, enter the code shared by the maintainer, then retry.'
       : 'Research access has not been configured on the server yet.';
-    if (code === 'maintainer_access_required') researchAccessCode = '';
+    if (code === 'maintainer_access_required') clearResearchAccess();
     if ($('research-access')) $('research-access').open = true;
     if ($('research-access-status')) $('research-access-status').textContent = message;
     return message;
@@ -22,18 +34,23 @@
     const input = $('research-access-code');
     const value = String(input.value || '').trim();
     input.value = '';
-    if (!/^[A-Za-z0-9_-]{32,256}$/.test(value)) {
+    if (!validAccessCode(value)) {
       $('research-access-status').textContent = 'Enter the access code shared by the maintainer (32–256 letters, numbers, underscores or hyphens).';
       return;
     }
     researchAccessCode = value;
-    $('research-access-status').textContent = 'Access code saved for this tab. Retry your action to verify access.';
+    let stored = false;
+    try { window.sessionStorage?.setItem(researchAccessKey, value); stored = Boolean(window.sessionStorage); } catch { /* Keep access in memory when storage is blocked. */ }
+    $('research-access-status').textContent = stored
+      ? 'Access code saved for this tab, including reloads. Retry your action to verify access.'
+      : 'Access code saved in memory for this tab; browser storage is unavailable, so reloads clear it. Retry your action to verify access.';
   });
   $('research-access-clear')?.addEventListener('click', () => {
-    researchAccessCode = '';
+    clearResearchAccess();
     $('research-access-code').value = '';
     $('research-access-status').textContent = 'Research access cleared.';
   });
+  if (researchAccessCode && $('research-access-status')) $('research-access-status').textContent = 'Research access restored for this tab. It will be verified when you run an action.';
   const elements = {
     form: $('search-form'), input: $('search-input'), list: $('record-list'),
     detail: $('case-detail'), banner: $('source-banner'), status: $('load-status'),
@@ -259,7 +276,7 @@
       try {
         const response = await fetch('/api/review-actions', { method: 'POST', cache: 'no-store', headers: accessHeaders('/api/review-actions', { 'Content-Type': 'application/json', Accept: 'application/json' }), body: JSON.stringify({ caseId: item.id, decision, note: note.value || '', by: hunterName }) });
         const payload = await response.json();
-        if (!response.ok) throw new Error(accessError(payload.error) || 'The decision could not be saved. Try again.');
+        if (!response.ok) throw new Error(accessError(payload.error, response.status) || 'The decision could not be saved. Try again.');
         if (payload.action) decisions[item.id] = payload.action; else delete decisions[item.id];
         if (Array.isArray(payload.leaderboard)) { board = payload.leaderboard; renderLeaderboard(); }
         renderList();
@@ -587,7 +604,7 @@
       const response = await fetch(url, { method: 'POST', cache: 'no-store', headers: accessHeaders(url, { Accept: 'application/x-ndjson', 'Content-Type': 'application/json' }), body: JSON.stringify(body) });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(accessError(payload.error) || researchErrors[payload.error] || `Research is unavailable (${payload.error || response.status}).`);
+        throw new Error(accessError(payload.error, response.status) || researchErrors[payload.error] || `Research is unavailable (${payload.error || response.status}).`);
       }
       if (response.body?.getReader && typeof TextDecoder === 'function') {
         const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = '';
@@ -672,6 +689,11 @@
     const head = make('div', 'evidence-head');
     head.append(make('span', `evidence-state ${tone}`, title), make('span', 'evidence-meta', `Checked ${checkedTime(finding.checkedAt)} · ${finding.pages ?? 0} pages fetched`));
     card.append(head);
+    if (finding.lastAttempt?.keptPrevious === true) {
+      const failedQuote = finding.lastAttempt.gate === 'rejected:unbound_quote';
+      card.append(make('p', 'research-note', `Latest attempt ${checkedTime(finding.lastAttempt.checkedAt)} ${failedQuote
+        ? 'could not verify a quote' : 'did not pass verification'}. Showing the earlier validated evidence.`));
+    }
     if (finding.summary) card.append(make('p', 'draft-message', finding.summary));
     for (const evidence of (finding.evidence || []).slice(0, 6)) {
       card.append(make('blockquote', 'evidence-quote', `“${evidence.quote}”`));
@@ -683,7 +705,9 @@
       finding.missingEvidence.slice(0, 6).forEach(text => missing.append(make('li', '', text)));
       card.append(make('div', 'eyebrow', 'Still needed'), missing);
     }
-    if (finding.gate && finding.gate !== 'passed') card.append(make('p', 'research-error', `Model output rejected by the evidence gate (${finding.gate.replace('rejected:', '')}); no claim was kept.`));
+    if (finding.gate && finding.gate !== 'passed') card.append(make('p', 'research-error', finding.gate === 'rejected:unbound_quote'
+      ? 'A model quote did not exactly match the fetched page. No claim was kept.'
+      : `Model output rejected by the evidence gate (${finding.gate.replace('rejected:', '')}); no claim was kept.`));
     return card;
   }
 
@@ -752,7 +776,7 @@
     try {
       const response = await fetch(url, { method: 'POST', cache: 'no-store', headers: accessHeaders(url, { 'Content-Type': 'application/json', Accept: 'application/json' }), body: JSON.stringify(body) });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(accessError(payload.error) || ({ invalid_email: 'Enter a valid email address.', invalid_phone: 'Enter a valid phone number, like 212-555-0123 or +44 20 7946 0958.', no_service_results: 'Run a service search first.', one_throttled: 'Please wait a few seconds and try again.',
+      if (!response.ok) throw new Error(accessError(payload.error, response.status) || ({ invalid_email: 'Enter a valid email address.', invalid_phone: 'Enter a valid phone number, like 212-555-0123 or +44 20 7946 0958.', no_service_results: 'Run a service search first.', one_throttled: 'Please wait a few seconds and try again.',
         one_action_failed: `One could not complete the action${payload.platformStatus ? ` (the app returned ${payload.platformStatus})` : ''}. Check the connection in One.` })[payload.error]
         || (String(payload.error || '').includes('not_configured') ? 'That app is not connected in One yet.' : 'The action failed.'));
       status.textContent = success(payload);

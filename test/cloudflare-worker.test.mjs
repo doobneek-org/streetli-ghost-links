@@ -24,6 +24,26 @@ test('static assets retain the frontend and receive edge security headers', asyn
   assert.match(response.headers.get('Content-Security-Policy'), /connect-src 'self'/);
 });
 
+test('HTML receives a unique CSP nonce for Cloudflare injection without allowing arbitrary inline scripts', async () => {
+  const worker = createCloudflareWorker();
+  const environment = { ASSETS: { fetch: async input => new Response(new URL(input.url).pathname === '/' ? '<script src="/app.js"></script>' : 'external asset',
+    { headers: { 'Content-Type': new URL(input.url).pathname === '/' ? 'text/html; charset=utf-8' : 'text/javascript', 'Cache-Control': 'public, max-age=600' } }) } };
+  const first = await worker.fetch(request('/'), environment);
+  const second = await worker.fetch(request('/'), environment);
+  const policy = first.headers.get('Content-Security-Policy');
+  const nonce = /'nonce-([A-Za-z0-9+/]{24})'/.exec(policy)?.[1];
+  assert.ok(nonce);
+  assert.doesNotMatch(policy, /unsafe-inline|unsafe-eval/);
+  assert.match(policy, /script-src 'self'/);
+  assert.notEqual(policy, second.headers.get('Content-Security-Policy'));
+  assert.equal(first.headers.get('Cache-Control'), 'private, no-store');
+  assert.equal(await first.text(), '<script src="/app.js"></script>');
+  const script = await worker.fetch(request('/app.js'), environment);
+  assert.doesNotMatch(script.headers.get('Content-Security-Policy'), /nonce-/);
+  assert.equal(script.headers.get('Cache-Control'), 'public, max-age=600');
+  assert.doesNotMatch((await worker.fetch(request('/health'))).headers.get('Content-Security-Policy'), /nonce-/);
+});
+
 test('live feed requests share one import, cache, refresh and never forward caller credentials', async () => {
   let calls = 0, clock = 100000;
   const worker = createCloudflareWorker({ now: () => clock, fetchImpl: async (url, options) => {

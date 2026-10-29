@@ -138,19 +138,20 @@ export function createDiscoveryRunner({ dataDir = DATA, run = runPython, availab
     const receipts = await readJson(resultsPath, []);
     const prior = receipts.filter(item => item.binding === job.binding).at(-1);
     const at = now().toISOString().replace(/\.\d+Z$/, 'Z');
-    const receipt = outcome.status === 'completed'
-      ? { binding: job.binding, status: 'completed', checkedAt: outcome.checkedAt || at }
-      : { binding: job.binding, status: 'error', checkedAt: at, attemptedAt: at, attempts: (prior?.attempts || 0) + 1 };
-    // Keep the newest receipt per binding, bounded.
-    await writeJson(resultsPath, [...receipts.filter(item => item.binding !== job.binding), receipt].slice(-2000));
-    if (outcome.status !== 'completed') return [];
     const findings = await readJson(findingsPath, {});
     const saved = [];
-    for (const verification of outcome.verifications || []) {
-      const item = cases.find(candidate => candidate.id === verification.caseId);
-      if (!item) continue;
+    const verifications = Array.isArray(outcome?.verifications) ? outcome.verifications : [];
+    const checkedAt = Number.isFinite(Date.parse(outcome?.checkedAt)) && Date.parse(outcome.checkedAt) <= Date.parse(at)
+      ? outcome.checkedAt : at;
+    let complete = outcome?.status === 'completed' && cases.length > 0;
+    for (const item of cases) {
+      const candidates = verifications.filter(candidate => candidate?.caseId === item.id);
+      const verification = candidates.length === 1 ? candidates[0] : null;
       let finding;
-      if (verification.error || !verification.output) finding = { verdict: 'error', gate: 'model_failed' };
+      if (outcome?.status !== 'completed' || verification?.error || !verification?.output) finding = {
+        verdict: 'error', gate: 'model_failed', evidence: [], missingEvidence: [],
+        summary: 'The model did not return a usable verification. No new claim was kept; retry after the short backoff.'
+      };
       else {
         try {
           validateVerification(verification.output, { case: item, documents: outcome.documents, now: Date.parse(outcome.checkedAt) });
@@ -158,16 +159,34 @@ export function createDiscoveryRunner({ dataDir = DATA, run = runPython, availab
           finding = { ...verification.output, gate: 'passed',
             evidence: verification.output.evidence.map(evidence => ({ ...evidence, url: urls[evidence.documentId] })) };
         } catch (error) {
-          // Unbound quotes or stale sources: keep only the failure, never the claim.
-          finding = { verdict: 'uncertain', gate: `rejected:${String(error.message).replace(/^.*: /, '')}`, evidence: [], missingEvidence: [], summary: 'The model output failed the evidence gate and was discarded.' };
+          // Only a fixed validator code survives; the rejected output is never returned.
+          const reason = /^Invalid research output: ([a-z_]{1,60})$/.exec(String(error.message))?.[1] || 'invalid_output';
+          finding = { verdict: 'uncertain', gate: `rejected:${reason}`, evidence: [], missingEvidence: [],
+            summary: reason === 'unbound_quote'
+              ? 'The model quoted text that was not found verbatim in the fetched page. No claim was kept; retry after the short backoff.'
+              : 'The model output failed the evidence checks. No claim was kept; retry after the short backoff.' };
         }
       }
-      findings[item.id] = { ...finding, caseId: item.id, jobId: job.id, binding: job.binding, checkedAt: outcome.checkedAt,
-        pages: outcome.documents.filter(document => document.status === 'fetched').length };
+      const previous = findings[item.id];
+      const previousAt = Date.parse(previous?.checkedAt || '');
+      const keptPrevious = finding.gate !== 'passed' && previous?.gate === 'passed' && previous.caseId === item.id
+        && previous.binding === job.binding && Number.isFinite(previousAt) && previousAt <= Date.parse(at)
+        && Date.parse(at) - previousAt < FINDING_MAX_AGE_MS;
+      if (finding.gate !== 'passed') complete = false;
+      findings[item.id] = keptPrevious
+        ? { ...previous, lastAttempt: { checkedAt: at, gate: finding.gate, keptPrevious: true } }
+        : { ...finding, caseId: item.id, jobId: job.id, binding: job.binding, checkedAt,
+          pages: Array.isArray(outcome?.documents) ? outcome.documents.filter(document => document.status === 'fetched').length : 0 };
       saved.push(findings[item.id]);
     }
+    // A process finishing is not a successful evidence check. Any missing or rejected
+    // verification uses the planner's short error backoff, never its 24-hour cache.
+    const receipt = complete
+      ? { binding: job.binding, status: 'completed', checkedAt }
+      : { binding: job.binding, status: 'error', checkedAt: at, attemptedAt: at, attempts: (prior?.attempts || 0) + 1 };
+    await writeJson(resultsPath, [...receipts.filter(item => item.binding !== job.binding), receipt].slice(-2000));
     await writeJson(findingsPath, findings);
-    return saved;
+    return { findings: saved, status: receipt.status };
   }
 
   return {
@@ -185,7 +204,28 @@ export function createDiscoveryRunner({ dataDir = DATA, run = runPython, availab
       }));
     },
     async plan(feed, options = {}) {
-      return buildDiscoveryPlan(feed, { previousResults: await readJson(resultsPath, []), now: now().getTime(), ...options });
+      const time = now().getTime();
+      const [receipts, saved] = await Promise.all([readJson(resultsPath, []), readJson(findingsPath, {})]);
+      const idsByBinding = new Map();
+      for (const [id, binding] of currentCaseBindings(feed, time)) {
+        if (!idsByBinding.has(binding)) idsByBinding.set(binding, []);
+        idsByBinding.get(binding).push(id);
+      }
+      // Older runtimes marked a finished model process completed even after its
+      // output was rejected. Correct that planner input without rewriting history
+      // or starting a paid retry. The original attempt time still controls backoff.
+      const previousResults = receipts.map(receipt => {
+        const ids = idsByBinding.get(receipt?.binding);
+        const failed = ids?.some(id => {
+          const finding = saved[id], checkedAt = Date.parse(finding?.checkedAt || '');
+          return finding?.binding !== receipt.binding || finding?.gate !== 'passed'
+            || !Number.isFinite(checkedAt) || checkedAt > time || time - checkedAt >= FINDING_MAX_AGE_MS;
+        });
+        return receipt?.status === 'completed' && failed
+          ? { ...receipt, status: 'error', attemptedAt: receipt.checkedAt, attempts: 1 }
+          : receipt;
+      });
+      return buildDiscoveryPlan(feed, { previousResults, now: time, ...options });
     },
     // Runs up to maxJobs due jobs sequentially. onEvent receives progress lines.
     async runDue(feed, { maxJobs = 3, onlyCaseIds = null, onEvent = () => {} } = {}) {
@@ -207,9 +247,9 @@ export function createDiscoveryRunner({ dataDir = DATA, run = runPython, availab
           onEvent({ type: 'job', index: index + 1, total: jobs.length, kind: job.kind, caseIds: job.caseIds });
           const cases = feed.cases.filter(item => job.caseIds.includes(item.id));
           const outcome = await run({ discoveryJob: job, cases }, { onEvent });
-          const findings = await record(job, outcome, cases);
-          onEvent({ type: 'job_done', index: index + 1, status: outcome.status, findings });
-          saved.push(...findings);
+          const recorded = await record(job, outcome, cases);
+          onEvent({ type: 'job_done', index: index + 1, status: recorded.status, findings: recorded.findings });
+          saved.push(...recorded.findings);
         }
         return { plan: { eligible: plan.eligibleCaseIds.length, due: plan.jobs.length, ran: jobs.length, skipped: plan.skipped }, findings: saved };
       } finally { running = false; }

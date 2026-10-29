@@ -48,6 +48,12 @@ secrets. See [Cloud Run setup](deploy-cloud-run.md) for the matching runtime.
 The proxy allows ten minutes for a bounded streamed batch, matching Cloud Run's
 request limit; each Python job still has its own three-minute limit.
 
+HTML responses include a fresh CSP nonce and are not cached. Cloudflare reads the
+nonce from the policy and attaches it to its injected JavaScript Detections
+bootstrap. `script-src 'self'` stays in place, without `unsafe-inline` or
+`unsafe-eval`. The app's own JavaScript remains in external same-origin files.
+This follows [Cloudflare's CSP guidance](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/javascript-detections/#if-you-have-a-content-security-policy-csp).
+
 ## Verification
 
 Check `/health`, `/api/cases`, the dashboard and one reporting route. `/health`
