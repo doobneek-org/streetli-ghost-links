@@ -8,6 +8,40 @@ import { PUBLIC_CASES_URL } from '../packages/contracts/case-source.mjs';
 
 const fixture = JSON.parse(await readFile(new URL('../fixtures/cases.demo.json', import.meta.url), 'utf8'));
 
+test('ask and routed requests explain provider contention and timeout without blaming the request', async () => {
+  for (const [error, expected] of [['LLMRateLimitError', 'The model provider is busy. Please retry shortly.'],
+    ['APITimeoutError', 'The model provider timed out. Please retry.']]) {
+    const server = await createFixtureServer({
+      discovery: { available: () => true, busy: false },
+      python: async payload => payload.stage === 'route-request' ? { output: { route: 'records', reason: 'Review records' } } : { error }
+    });
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    try {
+      for (const route of ['/api/ask', '/api/route']) {
+        const response = await fetch(`http://127.0.0.1:${server.address().port}${route}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request: 'Find broken websites' })
+        });
+        const lines = (await response.text()).trim().split('\n').map(line => JSON.parse(line));
+        assert.equal(lines.at(-1).type, 'error');
+        assert.equal(lines.at(-1).message, expected);
+        assert.ok(!JSON.stringify(lines).includes(error));
+      }
+    } finally { await new Promise(resolve => server.close(resolve)); }
+  }
+});
+
+test('a busy routing model reports the provider failure instead of an unsupported user request', async () => {
+  const server = await createFixtureServer({ discovery: { available: () => true, busy: false }, python: async () => ({ error: 'RateLimitError' }) });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/route`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request: 'Find broken websites' })
+    });
+    const lines = (await response.text()).trim().split('\n').map(line => JSON.parse(line));
+    assert.deepEqual(lines.at(-1), { type: 'error', message: 'The model provider is busy. Please retry shortly.' });
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
 test('fixture API runs offline, identifies itself, and rejects writes', async () => {
   const server = await createFixtureServer();
   server.listen(0, '127.0.0.1'); await once(server, 'listening');

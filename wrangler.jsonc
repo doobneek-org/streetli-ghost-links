@@ -12,6 +12,7 @@
     "run_worker_first": true
   },
   "vars": {
-    "PUBLIC_ORIGIN": "https://you.doobneek.org"
+    "PUBLIC_ORIGIN": "https://you.doobneek.org",
+    "RESEARCH_BACKEND_URL": "https://ghost-links-research-6konvjemca-ue.a.run.app"
   }
 }

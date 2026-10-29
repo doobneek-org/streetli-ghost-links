@@ -16,6 +16,26 @@ const AGENT_DIR = fileURLToPath(new URL('.', import.meta.url));
 const DATA = fileURLToPath(new URL('../../data/', import.meta.url));
 const JOB_TIMEOUT_MS = 180000;
 const FINDING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const STAGES = new Set(['route-request', 'plan-request', 'select-case', 'verify-reference', 'draft-correction']);
+const EXCEPTION_CLASSES = new Set(['ValueError', 'TypeError', 'KeyError', 'RuntimeError', 'ValidationError', 'JSONDecodeError',
+  'ImportError', 'ModuleNotFoundError', 'AttributeError', 'AuthenticationError', 'PermissionDeniedError', 'RateLimitError',
+  'LLMRateLimitError', 'APITimeoutError', 'LLMTimeoutError', 'APIConnectionError', 'BadRequestError', 'InternalServerError', 'TimeoutError', 'ConnectionError', 'HTTPStatusError']);
+const FAILURE_REASONS = new Set(['timeout', 'runtime_unavailable', 'no_result', 'model_exception', 'process_exit', 'stage_exception', 'invalid_stage_output']);
+
+// Operator diagnostics contain fixed categories and exception class names only.
+// Never include stderr, model output, stage input, identifiers or error messages.
+export function reportResearchFailure({ operation = 'stage', stage, reason, exceptionClass, elapsedMs, exitCode, signal } = {},
+  diagnostic = record => console.error(JSON.stringify(record))) {
+  const record = { severity: 'ERROR', event: 'ghost_links_research_failure',
+    operation: ['stage', 'discovery', 'event', 'case'].includes(operation) ? operation : 'unknown',
+    ...(operation === 'stage' ? { stage: STAGES.has(stage) ? stage : 'unknown' } : {}),
+    reason: FAILURE_REASONS.has(reason) ? reason : 'model_exception',
+    ...(exceptionClass ? { exceptionClass: EXCEPTION_CLASSES.has(exceptionClass) ? exceptionClass : 'UnknownException' } : {}),
+    ...(Number.isFinite(elapsedMs) ? { elapsedMs: Math.max(0, Math.round(elapsedMs)) } : {}),
+    ...(Number.isInteger(exitCode) ? { exitCode } : {}),
+    ...(['SIGTERM', 'SIGKILL', 'SIGINT', 'SIGABRT', 'SIGSEGV'].includes(signal) ? { signal } : {}) };
+  try { diagnostic(record); } catch { /* Logging must not change the research result. */ }
+}
 
 function identifierGroups(cases) {
   const groups=new Map();
@@ -54,29 +74,58 @@ async function writeJson(path, value) {
 }
 
 // Runs the Python CLI once with a JSON payload; resolves with its result line.
-export function runPython(payload, { onEvent = () => {}, python = resolveResearchPython(), cwd = AGENT_DIR, spawnImpl = spawn, timeoutMs = JOB_TIMEOUT_MS } = {}) {
+export function runPython(payload, { onEvent = () => {}, python = resolveResearchPython(), cwd = AGENT_DIR, spawnImpl = spawn, timeoutMs = JOB_TIMEOUT_MS,
+  onDiagnostic } = {}) {
   return new Promise(resolve => {
-    const child = spawnImpl(python, ['-m', 'research.run', '--stdin', '--jsonl'], { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
-    let buffer = ''; let result = null; let done = false;
-    const finish = value => { if (!done) { done = true; clearTimeout(timer); resolve(value); } };
-    const timer = setTimeout(() => { child.kill('SIGTERM'); finish({ status: 'error', error: 'timeout' }); }, timeoutMs);
+    const startedAt = Date.now();
+    const context = payload?.stage ? { operation: 'stage', stage: payload.stage }
+      : { operation: payload?.discoveryJob ? 'discovery' : payload?.eventText ? 'event' : 'case' };
+    let child, timer, buffer = '', result = null, done = false, stderrTail = '';
+    const finish = (value, details = {}) => {
+      if (done) return;
+      done = true; clearTimeout(timer);
+      if (value?.error || value?.status === 'error') reportResearchFailure({ ...context,
+        reason: ['timeout', 'runtime_unavailable', 'no_result'].includes(value.error) ? value.error : 'model_exception',
+        ...(EXCEPTION_CLASSES.has(value.error) ? { exceptionClass: value.error } : {}), elapsedMs: Date.now() - startedAt, ...details }, onDiagnostic);
+      resolve(value);
+    };
+    const parseLine = line => {
+      line = line.trim();
+      if (!line.startsWith('{')) return;
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.type === 'event') onEvent(parsed);
+        if (parsed.type === 'result') result = parsed;
+      } catch { /* Ignore library output, never copy it to diagnostics. */ }
+    };
+    try { child = spawnImpl(python, ['-m', 'research.run', '--stdin', '--jsonl'], { cwd, stdio: ['pipe', 'pipe', 'pipe'] }); }
+    catch { finish({ status: 'error', error: 'runtime_unavailable' }); return; }
+    timer = setTimeout(() => {
+      // Resolve first: kill may synchronously emit close in process stubs, or race a real exit.
+      finish({ status: 'error', error: 'timeout' });
+      try { child.kill('SIGTERM'); } catch { /* The child may already have exited. */ }
+    }, timeoutMs);
     child.on('error', () => finish({ status: 'error', error: 'runtime_unavailable' }));
     child.stdout.on('data', chunk => {
+      if (done) return;
       buffer += chunk.toString('utf8');
       let newline;
       while ((newline = buffer.indexOf('\n')) >= 0) {
         const line = buffer.slice(0, newline).trim(); buffer = buffer.slice(newline + 1);
-        if (!line.startsWith('{')) continue;
-        try {
-          const parsed = JSON.parse(line);
-          if (parsed.type === 'event') onEvent(parsed);
-          if (parsed.type === 'result') result = parsed;
-        } catch { /* ignore library output */ }
+        parseLine(line);
       }
     });
-    child.stderr.on('data', () => {});
-    child.on('close', () => finish(result || { status: 'error', error: 'no_result' }));
-    child.stdin.end(JSON.stringify(payload));
+    child.stderr.on('data', chunk => { stderrTail = (stderrTail + chunk.toString('utf8')).slice(-8192); });
+    child.on('close', (exitCode, signal) => {
+      if (done) return;
+      if (buffer.trim()) parseLine(buffer);
+      // Extract only a recognized Python traceback class, discarding its message.
+      const exceptionClass = stderrTail.split(/\r?\n/).map(line => /^([A-Za-z]+(?:Error|Exception))(?::|$)/.exec(line)?.[1])
+        .filter(name => EXCEPTION_CLASSES.has(name)).at(-1);
+      finish(result || { status: 'error', error: 'no_result' }, { exitCode, signal, ...(exceptionClass ? { exceptionClass } : {}) });
+    });
+    child.stdin.on?.('error', () => finish({ status: 'error', error: 'runtime_unavailable' }));
+    try { child.stdin.end(JSON.stringify(payload)); } catch { finish({ status: 'error', error: 'runtime_unavailable' }); }
   });
 }
 

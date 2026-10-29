@@ -125,7 +125,7 @@ export function createCloudflareWorker({ fetchImpl = fetch, now = Date.now, repo
     try {
       response = await fetchImpl(target, { method: request.method, body, redirect: NO_REDIRECT,
         headers: { Authorization: `Bearer ${backend.token}`, Accept: request.headers.get('Accept') === 'application/x-ndjson' ? 'application/x-ndjson' : 'application/json',
-          ...(request.method === 'POST' ? { 'Content-Type': 'application/json' } : {}) }, signal: AbortSignal.timeout(180000) });
+          ...(request.method === 'POST' ? { 'Content-Type': 'application/json' } : {}) }, signal: AbortSignal.timeout(600000) });
     } catch { return json({ error: 'research_backend_unavailable' }, 503); }
     if (redirected(response)) return json({ error: 'research_backend_unavailable' }, 503);
     if (!response.ok) {

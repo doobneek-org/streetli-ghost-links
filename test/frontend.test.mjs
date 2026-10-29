@@ -276,7 +276,7 @@ test('research access stays in memory and authorizes research, decisions and One
   app.$('search-form').dispatch('submit'); await flush();
   assert.equal(app.requests.filter(request => request.url === '/api/route').at(-1).headers.Authorization, undefined);
   const reloaded = await startApp(makeFeed([makeCase('access-b', 'website')]));
-  assert.match(reloaded.$('research-access-status').textContent, /No access code entered/);
+  assert.match(reloaded.$('research-access-status').textContent, /Enter your team's code/);
 });
 
 test('a rejected research access code opens a clear instruction and is discarded', async () => {

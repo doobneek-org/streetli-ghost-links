@@ -7,6 +7,11 @@ down, and helps people affected by an emergency find services that can still hel
 Built at *Hack with YOU: Halloween Edition* (Track 3, The Open Haunt) on Streetli's live NYC
 community-service data. 3-minute walkthrough: [docs/demo-script.md](docs/demo-script.md).
 
+Hosted dashboard: <https://you.doobneek.org/>. Browse the live case feed freely;
+live research and One actions require the team's code under **Research access**.
+Provider keys stay on the server. [Cloud Run deployment](docs/deploy-cloud-run.md)
+and [submission checklist](docs/submission-checklist.md).
+
 ## What it does
 
 One box. Typing filters the records instantly; pressing **Ask** lets a Parasail model,

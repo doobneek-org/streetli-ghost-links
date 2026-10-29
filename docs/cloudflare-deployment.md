@@ -32,7 +32,8 @@ A full deployment can run the Node/Python runtime in Cloudflare Containers or
 another container service behind the Worker. A container needs an explicit
 production listener/origin configuration, durable external state for findings,
 receipts and reviewer decisions, and server-side sponsor secrets. Its local
-filesystem must not be treated as durable data. Cloudflare Containers require a
+filesystem must not be treated as durable data. The current Cloud Run deployment
+mounts private Cloud Storage for these files. Cloudflare Containers require a
 Workers Paid subscription; the edge/static deployment does not enable one.
 
 The adapter supports an optional HTTPS research backend configured server-side
@@ -41,7 +42,11 @@ It only proxies allowlisted routes, strips incoming credentials and uses the
 dedicated backend token. Paid research and review mutations require the
 maintainer token rather than exposing an anonymous spend endpoint. Neither
 token belongs in frontend source, Git, screenshots or query strings. No backend
-or secrets are configured by the static deployment alone.
+or secrets are configured by the static deployment alone. The current deployment
+configures the Cloud Run origin in `wrangler.jsonc`; its credentials are Wrangler
+secrets. See [Cloud Run setup](deploy-cloud-run.md) for the matching runtime.
+The proxy allows ten minutes for a bounded streamed batch, matching Cloud Run's
+request limit; each Python job still has its own three-minute limit.
 
 ## Verification
 
@@ -53,12 +58,13 @@ provider work; the Cloudflare deployment does not replace his local `.env`.
 
 Two things that look like outages but are not:
 
-- The `doobneek.org` zone challenges default bot user agents, so `curl` without
-  a browser `User-Agent` returns `403` with `Cf-Mitigated: challenge` on every
-  hostname in the zone, including healthy ones. Pass a browser UA when probing.
-- This machine's resolver does not answer `you.doobneek.org` even though
-  Cloudflare and Google DNS do. Add
-  `--resolve you.doobneek.org:443:104.20.39.56` when curling from here.
+- The zone may return an HTML `403` with `Cf-Mitigated: challenge` to automated
+  requests before they reach the Worker. A browser user agent alone is not always
+  enough. Distinguish this from the app's JSON errors; do not weaken zone security
+  to make a command-line smoke check pass.
+- DNS negative caches can temporarily retain a pre-deployment result. Compare
+  the local resolver with current authoritative/public DNS before treating it as
+  an application failure. Avoid putting a fixed Cloudflare edge IP in app config.
 
 The Workers runtime rejects `redirect: 'error'` on `fetch` (only `follow` and
 `manual` exist at the edge). The Worker uses `manual` and refuses any `3xx`
