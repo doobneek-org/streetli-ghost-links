@@ -10,7 +10,10 @@ const CONFIG = fileURLToPath(new URL('../../data/one-actions.json', import.meta.
 const BASE = 'https://api.withone.ai/v1/passthrough';
 export const ONE_ACTIONS = ['discordMessage', 'gmailSend', 'sheetsAppend', 'twilioSms'];
 
-export async function loadOneConfig(path = CONFIG) {
+// A Secret Manager file mount can supply connection metadata without baking it into an image.
+export const oneConfigPath = (env = process.env) => env.ONE_ACTIONS_FILE || CONFIG;
+
+export async function loadOneConfig(path = oneConfigPath()) {
   try { return JSON.parse(await readFile(path, 'utf8')); } catch { return {}; }
 }
 

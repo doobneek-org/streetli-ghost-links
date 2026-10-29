@@ -4,6 +4,7 @@
 // validateSelection. The model never grants research scope; the planner does.
 import { validateSelection } from '../../packages/contracts/research-output.mjs';
 import { normalizeDiscoveryIdentifier } from '../../packages/contracts/discovery-plan.mjs';
+import { reportResearchFailure } from './discovery-runner.mjs';
 
 // Mirrors the category board in apps/web/app.js.
 export const CATEGORIES = {
@@ -16,6 +17,14 @@ export const CATEGORIES = {
 };
 const RISK_ORDER = ['website_scam_content', 'website_suspected_compromise', 'scan_suspected_compromise', 'website_repurposed', 'website_domain_parked', 'scan_parked_domain'];
 const MAX_CANDIDATES = 40;
+
+// Match trusted runtime codes/classes, never provider response text or error messages.
+export function stageFailureCode(error) {
+  if (['RateLimitError', 'LLMRateLimitError'].includes(error)) return 'provider_busy';
+  if (['timeout', 'TimeoutError', 'APITimeoutError', 'LLMTimeoutError'].includes(error)) return 'provider_timeout';
+  return 'request_not_understood';
+}
+const stageFailureReason = error => ['timeout', 'runtime_unavailable', 'no_result'].includes(error) ? error : 'model_exception';
 
 export function categoryOf(item) {
   const known = Object.entries(CATEGORIES).find(([, category]) => category.codes.includes(item.internal.reasonCode))?.[0];
@@ -47,10 +56,19 @@ export function applyPlan(cases, plan) {
   }).sort((a, b) => (RISK_ORDER.indexOf(a.internal.reasonCode) + 1 || 9) - (RISK_ORDER.indexOf(b.internal.reasonCode) + 1 || 9));
 }
 
-export async function answerRequest(request, feed, { runStage, eligibleCaseIds = [], onEvent = () => {} }) {
+export async function answerRequest(request, feed, { runStage, eligibleCaseIds = [], onEvent = () => {}, onDiagnostic }) {
   onEvent({ step: 'plan', status: 'start', message: 'Parasail interpreting the request via CrewAI' });
-  const planned = await runStage('plan-request', { request, categories: Object.fromEntries(Object.entries(CATEGORIES).map(([id, c]) => [id, c.detail])) });
-  if (!planned.output) return { error: 'request_not_understood' };
+  let planned;
+  try { planned = await runStage('plan-request', { request, categories: Object.fromEntries(Object.entries(CATEGORIES).map(([id, c]) => [id, c.detail])) }); }
+  catch (error) {
+    reportResearchFailure({ stage: 'plan-request', reason: 'stage_exception', exceptionClass: error?.name }, onDiagnostic);
+    return { error: stageFailureCode(error?.name) };
+  }
+  if (!planned?.output || typeof planned.output !== 'object' || Array.isArray(planned.output)) {
+    reportResearchFailure({ stage: 'plan-request', reason: planned?.error ? stageFailureReason(planned.error) : 'invalid_stage_output',
+      ...(planned?.error && stageFailureReason(planned.error) === 'model_exception' ? { exceptionClass: planned.error } : {}) }, onDiagnostic);
+    return { error: stageFailureCode(planned?.error) };
+  }
   const plan = cleanPlan(planned.output);
   const matches = applyPlan(feed.cases, plan);
   onEvent({ step: 'plan', status: 'done', message: `${matches.length} records match${plan.serviceTerms.length ? ` (names with ${plan.serviceTerms.slice(0, 4).map(term => `“${term}”`).join(', ')})` : ''}: ${plan.explanation}` });
@@ -61,9 +79,16 @@ export async function answerRequest(request, feed, { runStage, eligibleCaseIds =
   const ids = new Set(candidates.map(item => item.id));
   const researchCaseIds = eligibleCaseIds.filter(id => ids.has(id));
   onEvent({ step: 'select', status: 'start', message: `Choosing up to three of ${candidates.length} to research first` });
-  const selected = await runStage('select-case', { request, mode: feed.mode, cases: candidates, researchCaseIds, now: new Date().toISOString().replace(/\.\d+Z$/, 'Z') });
+  let selected;
+  try { selected = await runStage('select-case', { request, mode: feed.mode, cases: candidates, researchCaseIds, now: new Date().toISOString().replace(/\.\d+Z$/, 'Z') }); }
+  catch (error) {
+    reportResearchFailure({ stage: 'select-case', reason: 'stage_exception', exceptionClass: error?.name }, onDiagnostic);
+    selected = {};
+  }
+  if (selected?.error) reportResearchFailure({ stage: 'select-case', reason: stageFailureReason(selected.error),
+    ...(stageFailureReason(selected.error) === 'model_exception' ? { exceptionClass: selected.error } : {}) }, onDiagnostic);
   try {
-    result.selection = validateSelection(selected.output, { cases: candidates, mode: feed.mode, researchCaseIds });
+    result.selection = validateSelection(selected?.output, { cases: candidates, mode: feed.mode, researchCaseIds });
     onEvent({ step: 'select', status: 'done', message: `${result.selection.caseIds.length} selected (${result.selection.intent})` });
   } catch (error) {
     result.selectionGate = String(error.message || 'invalid').replace(/^.*: /, '');

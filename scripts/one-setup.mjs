@@ -3,13 +3,23 @@
 // data/one-actions.json. Makes no writes to any connected app.
 //   npm run one:setup
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { loadLocalEnv } from '../apps/agent/fixture-server.mjs';
+import { oneConfigPath } from '../apps/agent/one-actions.mjs';
 
 await loadLocalEnv();
 if (!process.env.ONE_SECRET) throw new Error('Set ONE_SECRET (sk_live_...) in .env first: https://app.withone.ai/settings/api-keys');
-const one = args => JSON.parse(execFileSync('npx', ['-y', '@withone/cli', '--agent', ...args], { encoding: 'utf8', env: process.env, maxBuffer: 32 * 1024 * 1024 }));
+// npx is a .cmd shim on Windows, which execFileSync cannot launch directly. Run the
+// actual npm CLI with Node, preserving argument boundaries without a command shell.
+const npxCli = [
+  process.env.npm_execpath && resolve(dirname(process.env.npm_execpath), 'npx-cli.js'),
+  resolve(dirname(process.execPath), 'node_modules/npm/bin/npx-cli.js'),
+  resolve(dirname(process.execPath), '../lib/node_modules/npm/bin/npx-cli.js'),
+].filter(Boolean).find(path => existsSync(path));
+if (!npxCli) throw new Error('Cannot find npm\'s npx CLI. Install npm and run npm run one:setup.');
+const one = args => JSON.parse(execFileSync(process.execPath, [npxCli, '-y', '@withone/cli', '--agent', ...args], { encoding: 'utf8', env: process.env, maxBuffer: 32 * 1024 * 1024 }));
 
 const WANTED = {
   discordMessage: { platform: 'discord', intent: 'send a message to a channel', method: 'POST' },
@@ -33,6 +43,7 @@ for (const [name, want] of Object.entries(WANTED)) {
   // Print ids and titles only; never the secret.
   console.log(`${want.platform}: ${action.title} · ${action.method} ${action.path}`);
 }
-await mkdir(resolve('data'), { recursive: true });
-await writeFile(resolve('data/one-actions.json'), `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
-console.log(`Saved ${Object.keys(config).length} action(s) to data/one-actions.json`);
+const outputPath = resolve(oneConfigPath());
+await mkdir(dirname(outputPath), { recursive: true });
+await writeFile(outputPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+console.log(`Saved ${Object.keys(config).length} action(s) to ${outputPath}`);

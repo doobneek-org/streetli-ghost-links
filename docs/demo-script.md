@@ -1,13 +1,76 @@
-# Ghost Links: 3-minute demo script
+# Ghost Links demo scripts
+
+Two versions: the recorded walkthrough for the [submission form](https://forms.gle/2z9dKv9gvsP3cEjW7)
+(deadline 6:25 PM Pacific), and a script for presenting live to judges.
+
+## Recorded submission walkthrough (3 minutes)
+
+Before recording, open the hosted dashboard or `http://127.0.0.1:4319/`, enter
+the team code under **Research access**, and check that Gmail is connected. Never
+record the access code, provider credentials, `.env`, or Secret Manager values.
+Keep any saved result's timestamp and **Saved result** label visible.
+
+### 0:00–0:30 — The problem
+
+“A nonprofit fixes its phone number or removes an old website, but other
+directories keep sending people to the bad contact. Ghost Links starts with
+Streetli's existing correction history and flags, then checks where those old
+identifiers still appear.”
+
+Open **Be a hero** to show the live review queue. Explain that a historical flag
+is a starting point for investigation, not proof of current wrongdoing.
+
+### 0:30–1:15 — One real record
+
+Filter for a phone or website, select a record, and open the inline Streetli
+record to show the current service context. Show the old identifier's history
+and **Open web search**. Explain the exclusions for surfaces we operate.
+
+### 1:15–2:10 — Evidence, not guesses
+
+Run **Research the web** on one selected case. Narrate the real progress:
+You.com searches and fetches public pages; CrewAI runs verification through
+Parasail; the code checks source identity, exact quotes and freshness.
+
+Show the actual outcome. An uncertain or rejected claim is useful: explain why
+the system retained uncertainty rather than making an accusation. Never label a
+snippet, old flag, or generic category change as confirmed fraud.
+
+If provider latency requires showing a previous run, say it is saved evidence
+and show its timestamp. Do not substitute mocked progress for a live run.
+
+### 2:10–2:45 — Help someone act
+
+Open the reporting guidance. Show the directory correction route and, for a
+website, the registrar lookup and its policy conditions. Explain that guidance
+does not guarantee removal and the app has not filed a report.
+
+Show Gmail through One. The presenter may deliberately send the progress report
+to their own inbox, or show connected status without sending. Do not claim a
+send happened if you only showed the button. Sheets needs a target spreadsheet;
+Twilio and Discord require their own connected accounts.
+
+### 2:45–3:00 — What we built
+
+“The new open-source work is the dashboard, evidence gates, public case contract,
+research pipeline and action integration. Streetli's dataset and prior cleanup
+infrastructure predate the hackathon. People review findings and choose actions;
+the app keeps uncertainty and evidence visible.”
+
+Upload the recording and put its URL in the [submission form](https://forms.gle/2z9dKv9gvsP3cEjW7)
+before the published 6:25 PM Pacific deadline.
+
+## Live presentation script (3 minutes)
 
 Track 3, The Open Haunt. Judged on innovation (25), technical implementation (25), user
 experience (20), impact (20), presentation and documentation (10). Each beat below names
 the criterion it earns.
 
-## Before you present (5 minutes)
+### Before you present (5 minutes)
 
 - [ ] Run `npm run dev` and open <http://127.0.0.1:4317/>. Check that `/health` shows
       `"mode":"live"` and `"researchRuntimeAvailable":true`.
+- [ ] Enter the team code under **Research access** (never on screen or in a recording).
 - [ ] Tick **⚡ Demo mode** so saved results appear instantly. Each one is labeled
       "Saved result … Not a live check"; say so out loud. Use **Run live now** only if time allows.
 - [ ] Type the demo phrases exactly as written below. Demo mode matches them ignoring case
@@ -18,9 +81,9 @@ the criterion it earns.
       once so it reads **☀️ Normal mode**. Close other tabs and enlarge the browser text.
 - [ ] Fallback if Wi-Fi drops: demo mode still works, since saved results are local.
 
-## Script
+### Script
 
-### 0:00 · The problem (impact)
+#### 0:00 · The problem (impact)
 
 > "When a food pantry changes its phone number, the old one doesn't die. It keeps haunting
 > Google listings, directories and old flyers. Someone in crisis calls a dead number, or
@@ -28,7 +91,7 @@ the criterion it earns.
 > community-service data, and it already knows which contacts failed. Ghost Links finds
 > where those ghosts still live online, and helps people find help that's actually there."
 
-### 0:20 · Someone needs help after an event (innovation, UX, technical)
+#### 0:20 · Someone needs help after an event (innovation, UX, technical)
 
 Type **`There was a flood on the Upper West Side`** and press **Ask**.
 
@@ -43,7 +106,7 @@ NYC Emergency Management), and the list sorted **closest first** with miles.
 > only shown if the name, quote and phone appear word for word on a page we fetched. No
 > hallucinated hotlines."
 
-### 1:00 · Take it with you (One)
+#### 1:00 · Take it with you (One)
 
 Type an address and click **📧 Send this list to my inbox** ("Email me this list" in normal mode). Switch to the
 inbox tab and show the email.
@@ -51,7 +114,7 @@ inbox tab and show the email.
 > "One sends it through Gmail, on a click, with the content built on the server from what we
 > found. Nothing is ever sent without a person pressing the button."
 
-### 1:20 · The maintainer side: hunting the ghosts (technical, impact)
+#### 1:20 · The maintainer side: hunting the ghosts (technical, impact)
 
 Click **👻 Become a ghost buster** ("Be a hero: fix outdated listings" in normal mode). Point to the categories: possible compromise,
 broken websites, bad phones, bad emails.
@@ -68,14 +131,14 @@ Click **Busted 👻 (resolved)**.
 
 > "Reviewers record what they found. It never edits Streetli on its own."
 
-### 2:15 · Ask in plain English (UX)
+#### 2:15 · Ask in plain English (UX)
 
 Type **`I want to check for record fixes needed by food banks`** and press **Ask**.
 
 > "Same box. Now it's a records question, so Parasail turns it into a filter: 13 food-bank
 > records that need a second look, with the top ones picked to research first."
 
-### 2:35 · Normal mode, and the close (presentation)
+#### 2:35 · Normal mode, and the close (presentation)
 
 Click **☀️ Normal mode**.
 
@@ -87,7 +150,7 @@ Click **☀️ Normal mode**.
 > on Streetli's live NYC data, keys stay server-side, and 98 tests run without a single paid
 > call."
 
-## Likely questions
+### Likely questions
 
 | Question | Answer |
 | --- | --- |
@@ -95,10 +158,9 @@ Click **☀️ Normal mode**.
 | What if the model makes something up? | Quotes must appear verbatim on a page fetched in that run; failures are discarded (`unbound_quote`). |
 | Does it change Streetli? | No. Decisions are reviewer notes; reporting guidance and One actions need a click. |
 | What if I don't say where? | It asks "Where should I look?" and offers a city-wide search. |
-| Where is it deployed? | Dashboard on Cloudflare at you.doobneek.org; the research backend is packaged for Cloud Run (`docs/deploy-cloud-run.md`). |
+| Where is it deployed? | Dashboard on Cloudflare at you.doobneek.org; research backend on Google Cloud Run with state in a private Cloud Storage bucket. |
 
-## Don't demo
+### Don't demo
 
 - Text me this list, Google Sheets log, Discord ticket: built, but not connected for the event.
-- Ask or Research on `you.doobneek.org`: the research backend isn't deployed there yet.
-  Present from your laptop.
+- Mocked progress. If a live run is too slow, show a saved result with its timestamp and say so.

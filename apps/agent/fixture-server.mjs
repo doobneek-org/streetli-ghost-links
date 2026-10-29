@@ -87,6 +87,12 @@ function startStream(response) {
   return line => { if (!response.writableEnded) response.write(`${JSON.stringify(line)}\n`); };
 }
 
+function requestErrorMessage(code) {
+  if (code === 'provider_busy') return 'The model provider is busy. Please retry shortly.';
+  if (code === 'provider_timeout') return 'The model provider timed out. Please retry.';
+  return 'The request could not be interpreted. Try rephrasing it.';
+}
+
 const describeDiscovery = event => event.type === 'plan' ? { step: 'plan', status: 'done', message: `${event.running} of ${event.due} due jobs running · ${event.eligible} eligible records · ${event.skipped?.freshCache || 0} fresh in cache` }
     : event.type === 'job' ? { step: 'job', status: 'start', message: `Job ${event.index}/${event.total}: ${event.kind} used by ${event.caseIds.length} record(s)` }
     : event.type === 'job_done' ? { step: 'job', status: event.status === 'completed' ? 'done' : 'error', message: `Job ${event.index} ${event.status}: ${event.findings.map(f => f.verdict).join(', ') || 'no findings'}` }
@@ -247,7 +253,7 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
         const runStage = (stage, input) => python({ stage, input });
         try {
           const result = await answerRequest(text, lastFeed, { runStage, eligibleCaseIds: eligible, onEvent: event => write({ type: 'event', ...event }) });
-          write(result.error ? { type: 'error', message: 'The request could not be interpreted. Try rephrasing it.' } : { type: 'result', kind: 'ask', ...result });
+          write(result.error ? { type: 'error', message: requestErrorMessage(result.error) } : { type: 'result', kind: 'ask', ...result });
         } catch { write({ type: 'error', message: 'The request failed. Check the server console and provider keys.' }); }
         return response.end();
       }
@@ -277,6 +283,11 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
           lastFeed = validateCaseFeed(await getCases());
           onEvent({ step: 'route', status: 'start', message: 'Parasail deciding how to handle this via CrewAI' });
           const routed = await python({ stage: 'route-request', input: { request: text } });
+          if (routed.error || !routed.output) {
+            const { stageFailureCode } = await import('./ask.mjs');
+            write({ type: 'error', message: requestErrorMessage(stageFailureCode(routed.error)) });
+            return response.end();
+          }
           const route = ['records', 'event', 'find_services', 'unsupported'].includes(routed.output?.route) ? routed.output.route : 'unsupported';
           onEvent({ step: 'route', status: 'done', message: `${route.replace('_', ' ')}: ${String(routed.output?.reason || '').slice(0, 200)}` });
           if (route === 'records') {
@@ -303,7 +314,7 @@ export async function createFixtureServer({ sourceUrl = '', token = '', fetchImp
               onEvent({ step: 'research', status: 'done', message: `${result.checked.filter(entry => entry.finding?.verdict === 'stale_reference').length} of ${shortlist.length} still listed by a third party` });
             }
             if (!result.error) await saveRouteCache(text, { kind: 'ask', route, ...result });
-            write(result.error ? { type: 'error', message: 'The request could not be interpreted. Try rephrasing it.' } : { type: 'result', kind: 'ask', route, ...result });
+            write(result.error ? { type: 'error', message: requestErrorMessage(result.error) } : { type: 'result', kind: 'ask', route, ...result });
           } else if (route === 'event' || route === 'find_services') {
             // Only real provider names may go to live search; fictional fixtures stay local.
             const cases = lastFeed.mode === 'live' ? lastFeed.cases.slice(0, 2000).map(item => ({ id: item.id, name: item.organization.name, locality: item.organization.locality })) : [];

@@ -13,7 +13,10 @@ const routes = new Map([
   ['/api/review-actions', ['GET', 'POST']], ['/api/discovery/findings', ['GET']],
   ['/api/discovery/run', ['POST']], ['/api/research', ['POST']],
   ['/api/research/test', ['POST']], ['/api/ask', ['POST']],
-  ['/api/route', ['POST']], ['/api/event-check', ['POST']],
+  ['/api/route', ['POST']], ['/api/route/cached', ['POST']], ['/api/event-check', ['POST']],
+  ['/api/one/status', ['GET']], ['/api/one/team-ticket', ['POST']],
+  ['/api/one/email-list', ['POST']], ['/api/one/ghost-report', ['POST']],
+  ['/api/one/text-list', ['POST']], ['/api/one/log-event', ['POST']],
 ]);
 const safeError = (code, status = 503) => Object.assign(new Error(code), { code, status });
 // The Workers runtime rejects redirect: 'error'; 'manual' surfaces the 3xx so we refuse it ourselves.
@@ -122,7 +125,7 @@ export function createCloudflareWorker({ fetchImpl = fetch, now = Date.now, repo
     try {
       response = await fetchImpl(target, { method: request.method, body, redirect: NO_REDIRECT,
         headers: { Authorization: `Bearer ${backend.token}`, Accept: request.headers.get('Accept') === 'application/x-ndjson' ? 'application/x-ndjson' : 'application/json',
-          ...(request.method === 'POST' ? { 'Content-Type': 'application/json' } : {}) }, signal: AbortSignal.timeout(180000) });
+          ...(request.method === 'POST' ? { 'Content-Type': 'application/json' } : {}) }, signal: AbortSignal.timeout(600000) });
     } catch { return json({ error: 'research_backend_unavailable' }, 503); }
     if (redirected(response)) return json({ error: 'research_backend_unavailable' }, 503);
     if (!response.ok) {
