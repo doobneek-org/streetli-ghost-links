@@ -194,6 +194,28 @@ test('one box: the router decides the flow, and fixture names never reach live s
   });
 });
 
+test('Ask researches its shortlist and returns each finding with official report routes', async () => {
+  const ran = [];
+  const python = async payload => {
+    if (payload.stage === 'route-request') return { output: { route: 'records', reason: 'test' } };
+    if (payload.stage === 'plan-request') return { output: { serviceTerms: [], categories: [], kinds: ['phone'], locality: null, explanation: 'old phones' } };
+    return { output: { intent: 'verify_external', kinds: [], states: [], locality: null, caseIds: ['approved-1'], question: null, explanation: 'top flag' } };
+  };
+  const discovery = { available: () => true, busy: false,
+    plan: async () => ({ eligibleCaseIds: ['approved-1'], jobs: [], skipped: {} }),
+    runDue: async (feed, { onlyCaseIds, onEvent }) => { ran.push(onlyCaseIds); onEvent({ type: 'plan', eligible: 1, due: 1, running: 1, skipped: {} }); return {}; },
+    findings: async () => ({ 'approved-1': { verdict: 'stale_reference', evidence: [{ quote: 'Call (212) 555-0123', url: 'https://directory.example/pantry' }] } }) };
+  await withServer({ python, discovery, source: async () => structuredClone(liveFeed) }, async base => {
+    const lines = (await (await fetch(`${base}/api/route`, { method: 'POST', body: JSON.stringify({ request: 'outdated phone numbers' }) })).text()).trim().split('\n').map(line => JSON.parse(line));
+    const result = lines.at(-1);
+    assert.equal(result.kind, 'ask');
+    assert.deepEqual(ran, [['approved-1']]);
+    assert.equal(result.checked[0].finding.verdict, 'stale_reference');
+    assert.match(result.checked[0].routes[0].title, /Google Maps/);
+    assert.ok(lines.some(line => line.step === 'research' && /1 of 1 still listed/.test(line.message)));
+  });
+});
+
 test('found services are marked at risk only when they match a live Streetli flag', async () => {
   const { annotateRisk } = await import('../apps/agent/ask.mjs');
   const service = { name: 'Pantry', website: 'https://www.pantry.org/hours', phone: '(212) 555-0123',
@@ -205,10 +227,8 @@ test('found services are marked at risk only when they match a live Streetli fla
   assert.equal(annotateRisk([service], { ...feed, mode: 'fixture' })[0].checks[0].state, 'listed');
 });
 
-test('leaderboard ranks reviewers by points from recorded decisions', async () => {
-  const { leaderboard, parseDecision } = await import('../apps/agent/review-actions.mjs');
-  const board = leaderboard({ a: { decision: 'resolved', by: 'Vlad' }, b: { decision: 'resolved', by: 'Vlad' }, c: { decision: 'not_an_issue', by: 'Mina' }, d: { decision: 'follow_up' } });
-  assert.deepEqual(board.map(entry => [entry.name, entry.points]), [['Vlad', 20], ['Mina', 3], ['Anonymous', 1]]);
+test('reviewer decisions accept only plain reviewer names', async () => {
+  const { parseDecision } = await import('../apps/agent/review-actions.mjs');
   assert.equal(parseDecision({ caseId: 'x', decision: 'resolved', by: '<script>' }), null);
   assert.equal(parseDecision({ caseId: 'x', decision: 'resolved', by: 'Van Helsing' }).by, 'Van Helsing');
 });

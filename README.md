@@ -27,8 +27,8 @@ For maintainers: a dashboard groups failed verifications (possible compromise, b
 bad phones/emails, automated scan leads); **Research the web** runs a bounded discovery job
 (You.com search and fetch → CrewAI/Parasail with Streetli's `verify-reference` prompt → evidence
 gate) and shows where an old contact is *still* listed, with exact quotes. Reviewers record
-decisions, and **One** turns findings into action. A 🎃 Halloween mode adds a ghost-buster
-leaderboard.
+decisions, and **One** turns findings into action. A 🎃 Halloween mode restyles the app for
+ghost hunting.
 
 ## Why each partner is load-bearing
 
@@ -37,7 +37,7 @@ leaderboard.
 | **You.com** | Search and Contents: find pages still showing an old contact; find services near an event; read their closure notices | No evidence, no services |
 | **Parasail** | Every judgment: routing the request, planning filters, verifying evidence with exact quotes, reading notices, deciding what an affected person needs | Nothing interprets the evidence |
 | **CrewAI** | Flows and agents coordinating search → fetch → match → verify → draft, with real progress events and routing on results | No bounded, routed pipeline |
-| **One** | On a click: Discord review ticket to the team, Gmail "email me this list" and progress report, Google Sheets events tracker and action list | Findings stay on screen; nothing gets fixed |
+| **One** | On a click: Gmail "email me this list" and progress report (live). Built and gated on setup: Google Sheets action list, Discord review ticket | Findings stay on screen; nothing reaches anyone |
 
 Safety by design: findings are cited leads, not accusations; every quote must appear verbatim on
 a freshly fetched page; generic scan flags are never shown as compromise; nothing is sent, edited

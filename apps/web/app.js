@@ -63,52 +63,12 @@
   const reportingPlans = new Map();
 
   // ---- Halloween mode: spooky colors and wording. Evidence, quotes and safety notes stay plain. ----
-  let spooky = false;
-  try { spooky = localStorage.getItem('ghost-links-halloween') === 'on'; } catch { spooky = false; }
+  // Halloween mode is the default; a visitor who switches to normal mode keeps that choice.
+  let spooky = true;
+  try { spooky = localStorage.getItem('ghost-links-halloween') !== 'off'; } catch { spooky = true; }
   const t = (normal, haunted) => spooky ? haunted : normal;
-  let hunterName = '';
-  try { hunterName = localStorage.getItem('ghost-links-hunter') || ''; } catch { hunterName = ''; }
-  let board = [];
   let oneReady = { discord: false, gmail: false, sheets: false, sms: false };
   const oneMissing = app => `Connect ${app} in One first (npm run one:setup).`;
-  const rankTitle = points => points >= 100 ? '⭐ Spectral Superhero' : points >= 30 ? '🦸 Poltergeist Wrangler' : points >= 10 ? '👻 Ghost Buster' : '🕯 Rookie Hunter';
-
-  // Leaderboard: Halloween mode only. Counts reviewer decisions recorded in this app.
-  function renderLeaderboard() {
-    const section = $('leaderboard');
-    if (!section) return;
-    section.hidden = !spooky;
-    if (!spooky) return;
-    const title = make('h3', 'leaderboard-title', '🏆 Leading Ghost Busters');
-    title.id = 'leaderboard-title';
-    const nameRow = make('form', 'hunter-form');
-    const name = make('input', 'decision-note');
-    name.type = 'text'; name.maxLength = 40; name.value = hunterName; name.placeholder = 'Your ghost-hunter name';
-    name.setAttribute('aria-label', 'Your ghost-hunter name');
-    const save = make('button', 'secondary-button', hunterName ? 'Rename' : 'Join the hunt'); save.type = 'submit';
-    nameRow.append(name, save);
-    nameRow.addEventListener('submit', event => {
-      event.preventDefault();
-      const value = String(name.value || '').trim().slice(0, 40);
-      if (value && !/^[\p{L}\p{N} ._'-]+$/u.test(value)) { name.value = hunterName; return; }
-      hunterName = value;
-      try { localStorage.setItem('ghost-links-hunter', hunterName); } catch { /* optional */ }
-      renderLeaderboard();
-    });
-    const list = make('ol', 'leaderboard-list');
-    if (!board.length) list.append(make('li', 'leaderboard-empty', 'No ghosts busted yet. Pick a record below and make the first bust.'));
-    board.slice(0, 10).forEach((entry, index) => {
-      const row = make('li', `leaderboard-row${entry.name === hunterName ? ' is-you' : ''}`);
-      row.append(make('span', 'leader-rank', ['🥇', '🥈', '🥉'][index] || `#${index + 1}`),
-        make('span', 'leader-name', entry.name === hunterName ? `${entry.name} (you)` : entry.name),
-        make('span', 'leader-title', rankTitle(entry.points)),
-        make('span', 'leader-stats', `${entry.resolved} busted · ${entry.notAnIssue} false alarms · ${entry.followUp} watching`),
-        make('span', 'leader-points', `${entry.points} pts`));
-      list.append(row);
-    });
-    section.replaceChildren(title, make('p', 'research-note', hunterName ? `Hunting as ${hunterName}. Every decision you record counts toward your rank.` : 'Set a hunter name so your busts count toward the board.'), nameRow, list,
-      make('p', 'evidence-meta', 'Points: busted 10 · false alarm 3 · keep watching 1. Ranks: Rookie Hunter → Ghost Buster (10) → Poltergeist Wrangler (30) → Spectral Superhero (100). Counts reviewer decisions recorded in this app, not verified external corrections.'));
-  }
   const spookyCategories = {
     all: ['All haunted records', 'Every restless record'], 'still-online': ['Ghosts still haunting the web', 'Old contacts other sites still show, with quotes'],
     compromise: ['Possessed links', 'Scam content, hijacked, repurposed or parked domains'], website: ['Dead links', 'Pages that no longer load'],
@@ -134,7 +94,6 @@
     if (submit) { const arrow = make('span', '', '↗'); arrow.setAttribute('aria-hidden', 'true'); submit.replaceChildren(document.createTextNode(t('Ask ', 'Summon ')), arrow); }
     const toggle = $('halloween-toggle');
     if (toggle) { toggle.setAttribute('aria-pressed', String(spooky)); toggle.textContent = spooky ? '☀️ Normal mode' : '🎃 Halloween mode'; }
-    renderLeaderboard();
     if (typeof setQueueOpen === 'function') setQueueOpen(queueOpen);
   }
   const halloweenToggle = $('halloween-toggle');
@@ -212,9 +171,7 @@
       const response = await fetch('/api/review-actions', { cache: 'no-store', headers: { Accept: 'application/json' } });
       const payload = await response.json();
       decisions = response.ok && payload?.mode === feed?.mode && payload.actions && typeof payload.actions === 'object' ? payload.actions : {};
-      board = response.ok && Array.isArray(payload?.leaderboard) ? payload.leaderboard : [];
       if (response.ok && payload?.one) oneReady = payload.one;
-      renderLeaderboard();
       if (response.ok && typeof payload?.researchBackendAvailable === 'boolean') researchBackendAvailable = payload.researchBackendAvailable;
     } catch { decisions = {}; }
     await loadFindings(false);
@@ -252,13 +209,12 @@
       if (researchBackendAvailable === false) { status.textContent = 'Reviewer decisions are not connected yet.'; return; }
       buttons.querySelectorAll('button').forEach(button => { button.disabled = true; });
       try {
-        const response = await fetch('/api/review-actions', { method: 'POST', cache: 'no-store', headers: accessHeaders('/api/review-actions', { 'Content-Type': 'application/json', Accept: 'application/json' }), body: JSON.stringify({ caseId: item.id, decision, note: note.value || '', by: hunterName }) });
+        const response = await fetch('/api/review-actions', { method: 'POST', cache: 'no-store', headers: accessHeaders('/api/review-actions', { 'Content-Type': 'application/json', Accept: 'application/json' }), body: JSON.stringify({ caseId: item.id, decision, note: note.value || '' }) });
         const payload = await response.json();
         if (!response.ok) throw new Error(accessError(payload.error) || 'The decision could not be saved. Try again.');
         if (payload.action) decisions[item.id] = payload.action; else delete decisions[item.id];
-        if (Array.isArray(payload.leaderboard)) { board = payload.leaderboard; renderLeaderboard(); }
         renderList();
-        if (spooky && decision === 'resolved') setBanner(`👻 Ghost busted${hunterName ? ` by ${hunterName}` : ''}! +10 points.`, 'ready');
+        if (spooky && decision === 'resolved') setBanner('👻 Ghost busted!', 'ready');
       } catch (error) { status.textContent = error.message || 'The decision could not be saved. Try again.'; buttons.querySelectorAll('button').forEach(button => { button.disabled = false; }); }
     };
     const options = current ? [['open', 'Reopen']] : [['resolved', t('Mark resolved', 'Busted 👻 (resolved)')], ['not_an_issue', t('Not an issue', 'False alarm')], ['follow_up', t('Needs follow-up', 'Keep watching')]];
@@ -274,7 +230,7 @@
     ticket.type = 'button';
     ticket.disabled = !oneReady.discord;
     ticket.title = oneReady.discord ? 'Posts a review ticket to the team channel' : oneMissing('Discord');
-    ticket.addEventListener('click', () => oneCall('/api/one/team-ticket', { caseId: item.id, note: note.value || '', by: hunterName }, ticket, status,
+    ticket.addEventListener('click', () => oneCall('/api/one/team-ticket', { caseId: item.id, note: note.value || '' }, ticket, status,
       () => t('Posted to the team channel through One.', '📣 The ghostbusters have been summoned (posted via One).')));
     section.append(buttons, ticket, status);
     if (!oneReady.discord) section.append(make('p', 'evidence-meta', oneMissing('Discord')));
@@ -704,6 +660,31 @@
   }
 
   // ---- Ask: "find me food services that may be at risk" ----
+  // Ask's research on one shortlisted identifier: still listed elsewhere? where? how to report.
+  function checkedSummary({ finding, routes = [] }) {
+    const card = make('div', 'ask-check');
+    if (!finding) card.append(make('p', 'research-note', 'Not researched yet (not eligible for live research, or the run failed). Open the record to check it.'));
+    else {
+      const evidence = Array.isArray(finding.evidence) ? finding.evidence.slice(0, 2) : [];
+      card.append(make('p', 'research-note', `${verdictText(finding.verdict)}${finding.checkedAt ? ` · checked ${checkedTime(finding.checkedAt)}` : ''}`));
+      for (const item of evidence) {
+        let host = '';
+        try { host = new URL(item.url).hostname.replace(/^www\./, ''); } catch { /* shown without a link */ }
+        const line = make('p', 'evidence-meta', `“${String(item.quote || '').slice(0, 200)}” `);
+        if (host) line.append(externalAnchor(host, item.url));
+        card.append(line);
+      }
+    }
+    if (routes.length) {
+      const report = make('p', 'evidence-meta', 'Official way to report: ');
+      report.append(externalAnchor(routes[0].title, routes[0].url));
+      if (routes.length > 1) report.append(document.createTextNode(` · ${routes.length - 1} more in the record`));
+      card.append(report);
+    }
+    card.append(make('p', 'evidence-meta', 'Google Maps itself is not searched; check the listing there before reporting.'));
+    return card;
+  }
+
   function renderAskResult(result) {
     setQueueOpen(true, { scroll: false });
     const box = make('div', 'research-result');
@@ -725,6 +706,8 @@
         open.type = 'button';
         open.addEventListener('click', () => { selectedId = id; renderList(); elements.detail.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
         box.append(open);
+        const checked = (result.checked || []).find(entry => entry.caseId === id);
+        if (checked) box.append(checkedSummary(checked));
       }
     } else if (result.selectionGate) box.append(make('p', 'research-note', 'The research shortlist was rejected by the output gate; review the filtered records directly.'));
     const clear = make('button', 'secondary-button', t('Clear this request', 'Banish this request'));
@@ -740,7 +723,7 @@
     runResearch('/api/ask', { request: ask.input.value }, ask.output, ask.submit, renderAskResult);
   });
 
-  // ---- One actions (Discord / Gmail / Google Sheets / Twilio SMS), always on an explicit click ----
+  // ---- One actions (Discord / Gmail / Google Sheets), always on an explicit click ----
   async function oneCall(url, body, button, status, success) {
     button.disabled = true;
     status.textContent = 'Working…';
@@ -766,18 +749,11 @@
     send.type = 'submit'; send.disabled = !oneReady.gmail; send.title = oneReady.gmail ? '' : oneMissing('Gmail');
     emailForm.append(email, send);
     emailForm.addEventListener('submit', event => { event.preventDefault(); oneCall('/api/one/email-list', { to: email.value }, send, status, payload => `Sent “${payload.subject}” through One.`); });
-    const textForm = make('form', 'one-form');
-    const phone = make('input', 'decision-note');
-    phone.type = 'tel'; phone.maxLength = 32; phone.autocomplete = 'tel'; phone.placeholder = '212-555-0123'; phone.setAttribute('aria-label', 'Text this list to');
-    const text = make('button', 'secondary-button', t('📱 Text me this list', '📱 Send this list to my phone'));
-    text.type = 'submit'; text.disabled = !oneReady.sms; text.title = oneReady.sms ? '' : oneMissing('Twilio');
-    textForm.append(phone, text);
-    textForm.addEventListener('submit', event => { event.preventDefault(); oneCall('/api/one/text-list', { to: phone.value }, text, status, payload => `Texted the list to ${payload.to} through One.`); });
     const log = make('button', 'secondary-button', result.kind === 'event' ? t('🗂 Log event + action list (Sheets)', '🗂 Record this calamity in the grimoire (Sheets)') : '🗂 Add to action list (Sheets)');
     log.type = 'button'; log.disabled = !oneReady.sheets; log.title = oneReady.sheets ? '' : oneMissing('Google Sheets');
     log.addEventListener('click', () => oneCall('/api/one/log-event', {}, log, status, payload => `Logged 1 event and ${payload.actions} action items to the tracker through One.`));
-    box.append(make('div', 'eyebrow', 'Take action (via One)'), emailForm, textForm, log, status);
-    const missing = [!oneReady.gmail && 'Gmail', !oneReady.sms && 'Twilio (text)', !oneReady.sheets && 'Google Sheets'].filter(Boolean);
+    box.append(make('div', 'eyebrow', 'Take action (via One)'), emailForm, log, status);
+    const missing = [!oneReady.gmail && 'Gmail', !oneReady.sheets && 'Google Sheets'].filter(Boolean);
     if (missing.length) box.append(make('p', 'evidence-meta', `Not connected yet: ${missing.join(', ')}. Run npm run one:setup after connecting them in One.`));
     return box;
   }
