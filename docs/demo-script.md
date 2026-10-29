@@ -122,9 +122,17 @@ Type **`Impacted by a fire in SoHo`** and press **Ask**, then say: "So let's be 
 Point to: the progress steps, the **Official protectors** cards (official disaster help:
 American Red Cross Greater NY, FDNY), and the list sorted **closest first** with miles.
 
-> "You.com searches and reads each service's own pages for closure notices. Official help is
-> only shown if the name, quote and phone appear word for word on a page we fetched. No
-> hallucinated hotlines."
+> "Every name, sentence and phone number in these official-help cards was checked against the
+> actual page we fetched. If the AI's version doesn't match the page word for word, we throw it
+> out. No hallucinated hotlines."
+
+Open one service card and point to its checks (✓ confirmed, ◐ directory only, ⚠ at risk):
+
+> "And we don't just trust the directory a number came from. Each phone and website is checked
+> three ways. Does the service's own website show the same number? Has Streetli already
+> flagged it as disconnected or compromised? If so, it's marked at risk before this family
+> ever dials it. And You.com reads recent pages for closure or move notices. We don't call
+> the numbers, so we say how sure we are instead of pretending to be certain."
 
 #### 1:15 · Take it with you (One)
 
@@ -173,6 +181,7 @@ Click **☀️ Normal mode**.
 | --- | --- |
 | Is this live data? | Yes, Streetli's shared live case feed. Demo mode replays saved live results, labeled as such. |
 | What if the model makes something up? | Quotes must appear verbatim on a page fetched in that run; failures are discarded (`unbound_quote`). |
+| How do you know a phone number still works? | We don't dial it. Each number is checked against the service's own website (✓), Streetli's list of known-dead contacts (⚠ at risk), and recent closure notices. No Streetli flag doesn't mean verified, so every result says to call ahead. Next step: a "this number didn't work" button that turns each dead end into a new Streetli flag. |
 | Does it change Streetli? | No. Decisions are reviewer notes; reporting guidance and One actions need a click. |
 | What if I don't say where? | It asks "Where should I look?" and offers a city-wide search. |
 | Where is it deployed? | Dashboard on Cloudflare at you.doobneek.org; research backend on Google Cloud Run with state in a private Cloud Storage bucket. |
