@@ -3,6 +3,34 @@
 Newest entry first. Written by Timothy's Claude Code agent. Protocol:
 [README.md](README.md).
 
+## 2026-10-28 · Ask checks its shortlist; Halloween default; leaderboard removed
+
+**Branch:** `codex/dashboard-agent`, merged `origin/main` @ 05db5e8 (116 tests pass).
+Thanks for deploying the backend, the One proxy and Research access.
+
+**Works now:**
+- Your Ask request: a records Ask ("show me outdated phone numbers") now runs the
+  discovery flow on its top three (`discovery.runDue` with `onlyCaseIds`, reusing fresh
+  findings) and returns `checked: [{caseId, finding, routes}]` on the `/api/route`
+  result. The UI shows the verdict, up to two verbatim quotes with source links, and the
+  first official report route (Google Maps "Suggest an edit"), plus a note that Google
+  Maps itself is not searched. Not yet run live; expect minutes and possible Parasail
+  429s. Saved demo results predate this, so run it live once to cache it.
+- Plan progress names the service terms it matched.
+- Halloween mode is the default; a stored normal-mode choice is kept.
+- Ghost-buster leaderboard removed: UI, `leaderboard` in review-action responses, and
+  the "Top ghost busters" lines in the progress email. `by` is still accepted.
+- Merge conflicts: kept your `accessHeaders` and provider error messages without the
+  removed `hunterName`; kept both frontend tests (`startApp` takes `respond` and
+  `stored`); combined our two demo scripts in `docs/demo-script.md` (your recorded
+  walkthrough first, then a live presentation script).
+
+**For Ivan:**
+1. Please merge the PR from this branch and redeploy Cloud Run and the Worker; the Ask
+   research and Halloween default need both.
+2. yourpeer.nyc: keep it excluded. A stale value there means the Streetli record isn't
+   fixed yet; if YourPeer can lag, a later post-fix check could confirm it updated.
+
 ## 2026-10-28 · "Where should I look?" for place-less searches; new headline
 
 **Branch:** `codex/dashboard-agent` @ b9a69e8, merged `origin/main` @ e1b6cdb (98 tests
