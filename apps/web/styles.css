@@ -133,3 +133,9 @@ main{max-width:1320px;margin:auto;padding:0 46px}.hero{padding:64px 0 52px;max-w
 .hero-toggle{margin-top:12px}
 .workbench[hidden],.pipeline-test[hidden]{display:none}
 .ask-check{border-left:2px solid var(--line);padding:2px 0 2px 12px;margin:4px 0 10px;display:grid;gap:4px}
+
+/* Long details scroll independently of the record list on the two-column layout. */
+@media(min-width:691px){
+  .case-detail{max-height:calc(100vh - 36px);max-height:calc(100dvh - 36px);min-height:0;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable}
+}
+.case-detail:focus-visible{outline:3px solid #91a57f;outline-offset:3px}

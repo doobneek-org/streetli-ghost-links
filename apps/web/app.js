@@ -381,6 +381,11 @@
   }
 
   function renderDetail(item) {
+    const detailId = item?.id || '';
+    if (elements.detail.dataset.caseId !== detailId) {
+      elements.detail.scrollTop = 0;
+      elements.detail.dataset.caseId = detailId;
+    }
     if (!item) {
       elements.detail.replaceChildren();
       const placeholder = make('div', 'detail-placeholder');
